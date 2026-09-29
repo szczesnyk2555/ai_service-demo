@@ -261,3 +261,10 @@ table.list tbody tr.clickable { cursor: pointer; }
   .app-title { display: none; }
   .view { padding: 18px 16px 40px; }
 }
+
+/* Result: material | notes | validation */
+.grid-3 { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.4fr) minmax(0, 1fr); gap: 18px; align-items: start; }
+.grid-3 > .card + .card { margin-top: 0; }
+.material-card .field { margin-bottom: 10px; }
+@media (max-width: 1280px) { .grid-3 { grid-template-columns: 1fr 1fr; } }
+@media (max-width: 960px) { .grid-3 { grid-template-columns: 1fr; } }

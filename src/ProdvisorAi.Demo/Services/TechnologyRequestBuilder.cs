@@ -5,7 +5,8 @@ using ProdvisorAi.Demo.Data;
 
 namespace ProdvisorAi.Demo.Services;
 
-public sealed record PartMetadata(string? PartNumber, string? Material, int? BatchSize, string DrawingFileName);
+/// <param name="DrawingText">Exact dimensions and texts extracted from a DXF (null for images / PDFs).</param>
+public sealed record PartMetadata(string? PartNumber, string? Material, int? BatchSize, string DrawingFileName, string? DrawingText = null);
 
 public sealed record DrawingInput(byte[] Bytes, string ContentType, string FileName);
 
@@ -102,9 +103,22 @@ public static class TechnologyRequestBuilder
                         ["additionalProperties"] = false,
                     },
                 },
+                ["material"] = new JsonObject
+                {
+                    ["type"] = "object",
+                    ["properties"] = new JsonObject
+                    {
+                        ["grade"] = new JsonObject { ["type"] = new JsonArray("string", "null") },
+                        ["stock"] = new JsonObject { ["type"] = new JsonArray("string", "null") },
+                        ["heat_treatment"] = new JsonObject { ["type"] = new JsonArray("string", "null") },
+                        ["source"] = new JsonObject { ["type"] = "string", ["enum"] = new JsonArray("drawing", "user", "assumed", "unknown") },
+                    },
+                    ["required"] = new JsonArray("grade", "stock", "heat_treatment", "source"),
+                    ["additionalProperties"] = false,
+                },
                 ["general_notes"] = new JsonObject { ["type"] = "string" },
             },
-            ["required"] = new JsonArray("operations", "general_notes"),
+            ["required"] = new JsonArray("material", "operations", "general_notes"),
             ["additionalProperties"] = false,
         };
     }
@@ -132,13 +146,25 @@ public static class TechnologyRequestBuilder
         sb.AppendLine($"- Batch size: {(part.BatchSize is > 0 ? $"{part.BatchSize} pcs" : "not provided")}");
         sb.AppendLine($"- Drawing file: {part.DrawingFileName}");
         sb.AppendLine();
+        if (!string.IsNullOrWhiteSpace(part.DrawingText))
+        {
+            sb.AppendLine("## Data extracted from the DXF file");
+            sb.AppendLine("The attached image was rendered from a DXF CAD file. The values below were read directly from the file and are EXACT -");
+            sb.AppendLine("prefer them over reading numbers from the image. Use the image for geometry and context.");
+            sb.AppendLine(part.DrawingText.Trim());
+            sb.AppendLine();
+        }
         sb.AppendLine("## Available machines (use ONLY these machine_id values)");
         sb.AppendLine(JsonSerializer.Serialize(machineList, new JsonSerializerOptions { WriteIndented = true }));
         sb.AppendLine();
+        sb.AppendLine("Fill \"material\" separately: grade = material designation as written on the drawing (title block / notes),");
+        sb.AppendLine("stock = raw material form and size you plan (e.g. round bar diameter x length), heat_treatment = as on the drawing or null.");
+        sb.AppendLine("source = \"drawing\" if read from the drawing, \"user\" if only given in the part data, \"assumed\" if you had to assume it, \"unknown\" otherwise.");
+        sb.AppendLine("If the material in the part data differs from the drawing, keep the drawing value and explain the conflict in general_notes.");
         sb.AppendLine("Prepare the draft production technology for the part on the attached drawing.");
         sb.AppendLine(language == "pl"
-            ? "Write all text fields (name, description, tools, general_notes) in Polish."
-            : "Write all text fields (name, description, tools, general_notes) in English.");
+            ? "Write all text fields (name, description, tools, general_notes, material.stock, material.heat_treatment) in Polish."
+            : "Write all text fields (name, description, tools, general_notes, material.stock, material.heat_treatment) in English.");
         return sb.ToString();
     }
 

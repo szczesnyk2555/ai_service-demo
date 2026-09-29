@@ -47,7 +47,9 @@ public class GenerationJob
     public int? BatchSize { get; set; }
     public string DrawingFileName { get; set; } = "";
     public string DrawingContentType { get; set; } = "";
-    public string DrawingPath { get; set; } = "";   // relative to the data directory
+    public string DrawingPath { get; set; } = "";   // relative to the data directory (for DXF: the rendered PNG)
+    public string? SourceDrawingPath { get; set; }  // original CAD file (DXF), if the drawing was converted
+    public string? DrawingText { get; set; }        // exact dimensions/texts extracted from the DXF, sent to the model
     public string PromptLanguage { get; set; } = "pl";
     public string? RegeneratedFromId { get; set; }
 

@@ -16,9 +16,19 @@ public static class TechnologyValidator
 
     static readonly string[] InspectionKeywords = ["inspect", "qc", "quality", "control", "kontrol", "pomiar", "measure"];
 
-    public static List<ValidationWarning> Validate(TechnologyResult tech, IReadOnlyList<Machine> allMachines)
+    public static List<ValidationWarning> Validate(TechnologyResult tech, IReadOnlyList<Machine> allMachines, string? userMaterial = null)
     {
         var w = new List<ValidationWarning>();
+
+        // Material: must be known; if the user typed one, it should match what was read from the drawing.
+        if (tech.Material is { } mat)
+        {
+            if (string.IsNullOrWhiteSpace(mat.Grade))
+                w.Add(new("material_missing", "warning", null, "material", null, "Material grade is not specified."));
+            else if (!string.IsNullOrWhiteSpace(userMaterial) && !Normalize(mat.Grade).Contains(Normalize(userMaterial)))
+                w.Add(new("material_mismatch", "warning", null, "material", Args(("drawing", mat.Grade), ("user", userMaterial)),
+                    $"Material on the drawing ({mat.Grade}) differs from the part data ({userMaterial})."));
+        }
         var ops = tech.Operations;
 
         if (ops.Count == 0)
@@ -77,6 +87,8 @@ public static class TechnologyValidator
 
         return w;
     }
+
+    static string Normalize(string s) => new string(s.Where(char.IsLetterOrDigit).Select(char.ToUpperInvariant).ToArray());
 
     static bool ContainsAny(string? text, string[] keywords) =>
         text is not null && keywords.Any(k => text.Contains(k, StringComparison.OrdinalIgnoreCase));

@@ -48,6 +48,7 @@ builder.Services.AddSingleton<SecretProtector>();
 builder.Services.AddScoped<SettingsService>();
 builder.Services.AddScoped<TechnologyGenerator>();
 builder.Services.AddSingleton<MockTechnologyProvider>();
+builder.Services.AddSingleton<DxfDrawingConverter>();
 builder.Services.AddSingleton<JobQueue>();
 builder.Services.AddHostedService<JobWorker>();
 
@@ -69,6 +70,7 @@ using (var scope = app.Services.CreateScope())
 {
     var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
     db.Database.EnsureCreated();
+    SchemaUpgrade.Apply(db);
     SeedData.Seed(db);
 }
 

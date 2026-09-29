@@ -12,6 +12,9 @@
   <ItemGroup>
     <PackageReference Include="Microsoft.EntityFrameworkCore.Sqlite" Version="8.0.11" />
     <PackageReference Include="Microsoft.Extensions.Hosting.WindowsServices" Version="8.0.1" />
+    <PackageReference Include="netDxf" Version="2023.11.10" />
+    <PackageReference Include="SkiaSharp" Version="4.153.0" />
+    <PackageReference Include="SkiaSharp.NativeAssets.Linux.NoDependencies" Version="4.153.0" />
     <PackageReference Include="System.Security.Cryptography.ProtectedData" Version="8.0.0" />
     <PackageReference Include="Serilog.AspNetCore" Version="8.0.3" />
   </ItemGroup>
@@ -24,6 +27,7 @@
     <!-- WithCulture=false: otherwise MSBuild treats ".pl." as a culture and moves the file to a satellite assembly -->
     <EmbeddedResource Include="..\..\samples\sample-mock-response.pl.json" LogicalName="MockResponse.pl.json" WithCulture="false" />
     <None Include="..\..\samples\sample-drawing-shaft.png" Link="samples\sample-drawing-shaft.png" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="..\..\samples\sample-drawing-shaft.dxf" Link="samples\sample-drawing-shaft.dxf" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 
 </Project>
