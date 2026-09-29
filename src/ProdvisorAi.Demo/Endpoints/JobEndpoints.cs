@@ -156,6 +156,7 @@ public static class JobEndpoints
                         o.No, o.Name, machine_code = o.MachineId,
                         maszyny_id = machines.TryGetValue(o.MachineId, out var m) ? m.ProdvisorId : null,
                         stanowisko_id = machines.TryGetValue(o.MachineId, out var w) ? w.WorkplaceId : null,
+                        machine_group = machines.TryGetValue(o.MachineId, out var gm) ? gm.GroupName : null,
                         // machine group: interchangeable machines / workplaces for this operation
                         alternatives = (o.AlternativeMachineIds ?? []).Select(a => new
                         {

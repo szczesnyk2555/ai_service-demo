@@ -24,7 +24,7 @@ public static partial class MachineEndpoints
                 .Select(m => new
                 {
                     m.Id, m.Name, m.Type, m.Description, m.HourlyRate, m.Active,
-                    m.ProdvisorId, m.IsVirtual, m.Kind, m.WorkplaceId, m.GroupCode, m.Hall,
+                    m.ProdvisorId, m.IsVirtual, m.Kind, m.WorkplaceId, m.GroupCode, m.GroupId, m.GroupName, m.Hall,
                     Parameters = m.ParametersJson is null ? [] : System.Text.Json.JsonSerializer.Deserialize<List<MachineParameter>>(m.ParametersJson)!,
                 }));
 

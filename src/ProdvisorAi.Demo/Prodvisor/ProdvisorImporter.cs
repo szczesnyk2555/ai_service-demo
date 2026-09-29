@@ -90,6 +90,8 @@ public sealed partial class ProdvisorImporter(AppDbContext db, IConfiguration co
             {
                 machine.WorkplaceId = wp.Id;
                 machine.GroupCode = string.IsNullOrWhiteSpace(wp.GroupCode) ? null : wp.GroupCode.Trim();
+                machine.GroupId = wp.NameId;
+                machine.GroupName = wp.NameId is { } nid && data.WorkplaceNames.TryGetValue(nid, out var gn) ? gn : null;
                 machine.Hall = wp.Hall;
                 machine.MultiOperation = wp.MultiOperation;
                 machine.Multiperson = wp.Multiperson;

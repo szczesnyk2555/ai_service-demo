@@ -19,6 +19,8 @@ public static class SchemaUpgrade
         ("Machines", "ParametersJson", "TEXT NULL"),
         ("Machines", "WorkplaceId", "INTEGER NULL"),
         ("Machines", "GroupCode", "TEXT NULL"),
+        ("Machines", "GroupId", "INTEGER NULL"),
+        ("Machines", "GroupName", "TEXT NULL"),
         ("Machines", "Hall", "INTEGER NULL"),
         ("Machines", "MultiOperation", "INTEGER NOT NULL DEFAULT 0"),
         ("Machines", "Multiperson", "INTEGER NOT NULL DEFAULT 0"),

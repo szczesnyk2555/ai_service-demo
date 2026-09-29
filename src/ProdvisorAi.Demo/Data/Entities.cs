@@ -19,7 +19,9 @@ public class Machine
 
     // dbo.STANOWISKO (workplace of this machine)
     public int? WorkplaceId { get; set; }         // STANOWISKO.ID - PRODVISOR routings reference workplaces
-    public string? GroupCode { get; set; }        // STANOWISKO.AuxiliaryNo - workplace group, e.g. "04" = CNC milling centres
+    public string? GroupCode { get; set; }        // STANOWISKO.AuxiliaryNo (auxiliary number, informational)
+    public int? GroupId { get; set; }             // STANOWISKO.ID_NAZWA_STANOWISKA - machine GROUP (same workplace name)
+    public string? GroupName { get; set; }        // STANOWISKO_NAZWA.NAZWA_STANOWISKA, e.g. "Frezarki CNC małe"
     public int? Hall { get; set; }                // STANOWISKO.NR_HALI
     public bool MultiOperation { get; set; }      // STANOWISKO.MultiOperation
     public bool Multiperson { get; set; }         // STANOWISKO.Multiperson

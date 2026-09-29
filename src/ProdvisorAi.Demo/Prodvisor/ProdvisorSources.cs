@@ -15,7 +15,8 @@ public sealed record MaterialRow(int Id, string Name, int? AlloyId, bool NoActiv
 /// <summary>dbo.STANOWISKO - the workplace a machine belongs to. AuxiliaryNo is the workplace GROUP code
 /// (e.g. "04" = all CNC milling centres 0401-0407), which lets machines be combined into groups.</summary>
 public sealed record WorkplaceRow(int Id, string? Number, int MachineId, double? HourlyCost, int? Hall,
-    bool MultiOperation, bool IsVirtual, string? GroupCode, bool Multiperson, int? WorkplacesGroup);
+    bool MultiOperation, bool IsVirtual, string? GroupCode, bool Multiperson, int? WorkplacesGroup,
+    int? NameId);   // STANOWISKO.ID_NAZWA_STANOWISKA -> STANOWISKO_NAZWA: machines with the same workplace name form a GROUP
 
 public sealed record ProdvisorData(
     IReadOnlyDictionary<int, string> MachineTypes,              // dbo.MASZYNY_TYP: ID -> TYP_MASZYNY
@@ -24,6 +25,7 @@ public sealed record ProdvisorData(
     IReadOnlyList<ParameterRow> Parameters,
     IReadOnlyList<MaterialRow> Materials,
     IReadOnlyList<WorkplaceRow> Workplaces,
+    IReadOnlyDictionary<int, string> WorkplaceNames,            // dbo.STANOWISKO_NAZWA: ID -> NAZWA_STANOWISKA (= group name)
     string SourceDescription);
 
 /// <summary>
@@ -71,8 +73,12 @@ public sealed class ProdvisorSource(IConfiguration config, ILogger<ProdvisorSour
             m.TryGetProperty("stanowisko", out var ws)
                 ? ws.EnumerateArray().Select(r => new WorkplaceRow(
                     r[0].GetInt32(), StrOrNull(r[1])?.Trim(), r[2].GetInt32(), r[3].ValueKind == JsonValueKind.Number ? r[3].GetDouble() : null,
-                    IntOrNull(r[4]), IntOrNull(r[5]) == 1, IntOrNull(r[6]) == 1, StrOrNull(r[7])?.Trim(), IntOrNull(r[8]) == 1, IntOrNull(r[9]))).ToList()
+                    IntOrNull(r[4]), IntOrNull(r[5]) == 1, IntOrNull(r[6]) == 1, StrOrNull(r[7])?.Trim(), IntOrNull(r[8]) == 1, IntOrNull(r[9]),
+                    r.GetArrayLength() > 10 ? IntOrNull(r[10]) : null)).ToList()
                 : [],
+            m.TryGetProperty("stanowisko_nazwa", out var wn)
+                ? wn.EnumerateArray().ToDictionary(r => r[0].GetInt32(), r => r[1].GetString()!.Trim())
+                : new Dictionary<int, string>(),
             "snapshot (embedded)");
     }
 
@@ -121,13 +127,16 @@ public sealed class ProdvisorSource(IConfiguration config, ILogger<ProdvisorSour
             r => new MaterialRow(Int(r, 0)!.Value, Str(r, 1) ?? "", Int(r, 2), Int(r, 3) == 1));
         var workplaces = await Query(
             $"SELECT {C("ID")}, {C("NR_STANOWISKA")}, {C("ID_MASZYNY")}, {C("KOSZT_ROBOCZOGODZINY")}, {C("NR_HALI")}, {C("MultiOperation")}, " +
-            $"{C("VirtualWorkplace")}, {C("AuxiliaryNo")}, {C("Multiperson")}, {C("WorkplacesGroup")} FROM {T("STANOWISKO")} WHERE {C("ID_MASZYNY")} IS NOT NULL",
+            $"{C("VirtualWorkplace")}, {C("AuxiliaryNo")}, {C("Multiperson")}, {C("WorkplacesGroup")}, {C("ID_NAZWA_STANOWISKA")} " +
+            $"FROM {T("STANOWISKO")} WHERE {C("ID_MASZYNY")} IS NOT NULL",
             r => new WorkplaceRow(Int(r, 0)!.Value, Str(r, 1), Int(r, 2)!.Value, Dbl(r, 3), Int(r, 4), Int(r, 5) == 1, Int(r, 6) == 1,
-                Str(r, 7), Int(r, 8) == 1, Int(r, 9)));
+                Str(r, 7), Int(r, 8) == 1, Int(r, 9), Int(r, 10)));
+        var workplaceNames = await Query($"SELECT {C("ID")}, {C("NAZWA_STANOWISKA")} FROM {T("STANOWISKO_NAZWA")}",
+            r => (Id: Int(r, 0)!.Value, Name: Str(r, 1) ?? ""));
 
         return new ProdvisorData(
             types.ToDictionary(t => t.Id, t => t.Name), machines, kinds.ToDictionary(k => k.Id), parameters, materials, workplaces,
-            $"{Provider} database");
+            workplaceNames.ToDictionary(w => w.Id, w => w.Name), $"{Provider} database");
     }
 
     // Tolerant readers: PRODVISOR columns are a mix of int / smallint / bit / decimal / char(n).
