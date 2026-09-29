@@ -15,7 +15,9 @@ public sealed record TechnologyOperation(
     [property: JsonPropertyName("tools")] string? Tools,
     [property: JsonPropertyName("confidence")] string Confidence,
     // Machine GROUP: other machines that can do the same operation interchangeably (planner picks one). Empty = only machine_id.
-    [property: JsonPropertyName("alternative_machine_ids")] List<string>? AlternativeMachineIds = null);
+    [property: JsonPropertyName("alternative_machine_ids")] List<string>? AlternativeMachineIds = null,
+    // Why group members were left out (technical reasons only), e.g. "0407 – stół 910 mm za krótki". Empty when the whole group fits.
+    [property: JsonPropertyName("group_note")] string? GroupNote = null);
 
 /// <summary>Material as read from the drawing (title block / notes), kept separate from the operations.</summary>
 public sealed record TechnologyMaterial(

@@ -516,7 +516,9 @@
       const primary = ed.machines.find((m) => m.id === o.machine_id);
       const chips = alts.map((a) => `<span class="chip" title="${esc((ed.machines.find((m) => m.id === a) || {}).name || '')}">${esc(a)}${ed.readOnly ? ''
         : `<button type="button" data-act="alt-del" data-alt="${esc(a)}" title="${esc(t('job.altRemove'))}">×</button>`}</span>`).join('');
-      if (ed.readOnly) return alts.length ? `<div class="alts"><span class="alts-label">${t('job.alts')}:</span>${chips}</div>` : '';
+      // AI's explanation why group members were left out
+      const note = o.group_note ? `<div class="group-note" title="${esc(t('job.groupNote'))}">ⓘ ${esc(o.group_note)}</div>` : '';
+      if (ed.readOnly) return (alts.length ? `<div class="alts"><span class="alts-label">${t('job.alts')}:</span>${chips}</div>` : '') + note;
       const pool = ed.machines.filter((m) => m.active && m.id !== o.machine_id && !alts.includes(m.id) && !m.isVirtual);
       const same = pool.filter((m) => primary?.groupName && m.groupName === primary.groupName);
       const other = pool.filter((m) => !same.includes(m));
@@ -526,7 +528,7 @@
           ${same.length ? `<option value="__group__">＋＋ ${esc(t('job.addWholeGroup', { g: primary.groupName, n: same.length }))}</option>` : ''}
           ${same.length ? `<optgroup label="${esc(t('job.sameGroup', { g: primary.groupName }))}">${same.map(opt).join('')}</optgroup>` : ''}
           <optgroup label="${esc(t('job.otherMachines'))}">${other.map(opt).join('')}</optgroup>
-        </select></div>`;
+        </select></div>${note}`;
     };
 
     const renderOps = () => {
@@ -723,6 +725,7 @@
       tools: o.tools == null || String(o.tools).trim() === '' ? null : String(o.tools),
       confidence: ['high', 'medium', 'low'].includes(o.confidence) ? o.confidence : 'medium',
       alternative_machine_ids: [...new Set((o.alternative_machine_ids || []).map(String))].filter((a) => a !== String(o.machine_id ?? '')),
+      group_note: o.group_note ? String(o.group_note) : '',
     };
   }
 

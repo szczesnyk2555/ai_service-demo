@@ -58,6 +58,7 @@
       "name": "Grinding - bearing seats",
       "machine_id": "0302",
       "alternative_machine_ids": [],
+      "group_note": "0301 – surface grinder, cannot grind shafts",
       "description": "Between centres: grind Ø25h6 and Ø30k6 bearing seats to size, Ra 1.6.",
       "setup_time_min": 25,
       "unit_time_min": 5.0,
