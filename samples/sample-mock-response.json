@@ -1,0 +1,75 @@
+{
+  "operations": [
+    {
+      "no": 1,
+      "name": "Cut bar stock to length",
+      "machine_id": "0101",
+      "description": "Cut Ø45 C45 round bar to 184 mm (180 mm overall length + 4 mm facing allowance).",
+      "setup_time_min": 10,
+      "unit_time_min": 2.5,
+      "tools": "Saw blade for steel",
+      "confidence": "high"
+    },
+    {
+      "no": 2,
+      "name": "CNC turning - side A",
+      "machine_id": "0502",
+      "description": "Clamp on raw bar. Face side A, centre drill, rough and finish turn Ø40, turn Ø25h6 x 40 mm leaving 0.2 mm grinding allowance, chamfer 1x45°.",
+      "setup_time_min": 35,
+      "unit_time_min": 6.0,
+      "tools": "CNMG 120408 roughing insert, VBMT 160404 finishing insert, centre drill A3.15",
+      "confidence": "high"
+    },
+    {
+      "no": 3,
+      "name": "CNC turning - side B",
+      "machine_id": "0502",
+      "description": "Re-clamp on Ø40 with soft jaws. Face to overall length 180 ±0.1, centre drill, turn Ø30k6 x 40 mm leaving 0.2 mm grinding allowance, chamfer 1x45°.",
+      "setup_time_min": 20,
+      "unit_time_min": 4.5,
+      "tools": "VBMT 160404 finishing insert, centre drill A3.15, soft jaws Ø40",
+      "confidence": "high"
+    },
+    {
+      "no": 4,
+      "name": "CNC milling - keyway",
+      "machine_id": "0402",
+      "description": "Clamp in a V-block fixture on Ø40. Mill keyway 8P9 x 28 mm, depth t=4 mm, on the Ø30k6 section, 6 mm from the shoulder.",
+      "setup_time_min": 30,
+      "unit_time_min": 4.0,
+      "tools": "Ø8 carbide keyway end mill, V-block fixture",
+      "confidence": "medium"
+    },
+    {
+      "no": 5,
+      "name": "Grinding - bearing seats",
+      "machine_id": "0302",
+      "description": "Between centres: grind Ø25h6 and Ø30k6 bearing seats to size, Ra 1.6.",
+      "setup_time_min": 25,
+      "unit_time_min": 5.0,
+      "tools": "Grinding wheel, micrometers 0-25 / 25-50 mm",
+      "confidence": "medium"
+    },
+    {
+      "no": 6,
+      "name": "Deburring",
+      "machine_id": "1501",
+      "description": "Remove burrs from the keyway edges and chamfers, break sharp edges 0.3 max, clean the part.",
+      "setup_time_min": 5,
+      "unit_time_min": 1.5,
+      "tools": "Deburring tool, abrasive pad",
+      "confidence": "high"
+    },
+    {
+      "no": 7,
+      "name": "Final inspection",
+      "machine_id": "1301",
+      "description": "Check Ø25h6, Ø30k6, keyway width 8P9 and depth, overall length 180 ±0.1, Ra 1.6 on bearing seats. First piece 100%, then sampling 1/10. Record results in the inspection report.",
+      "setup_time_min": 15,
+      "unit_time_min": 3.5,
+      "tools": "Micrometers 0-25 / 25-50 mm, keyway gauge 8P9, roughness tester",
+      "confidence": "high"
+    }
+  ],
+  "general_notes": "[MOCK RESPONSE] Stepped shaft Ø25h6 / Ø40 / Ø30k6, overall length 180 mm, material C45 according to the title block. Assumed stock: round bar Ø45. Bearing seats h6/k6 with Ra 1.6 are finished on the shaft grinder 0302 (0.2 mm allowance left in turning) - if fine turning is sufficient for the customer, operation 5 can be removed. Both turning set-ups are on the same CNC lathe 0502 to keep one programme owner. Keyway milled on the small CNC mill 0402. There is no washing station in the machine list; cleaning is included in deburring. Keyway depth read as t=4 mm - please verify. Heat treatment is not specified on the drawing. Times estimated for a batch of 50 pcs."
+}
