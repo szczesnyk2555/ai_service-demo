@@ -141,7 +141,7 @@ public static class TechnologyRequestBuilder
             type = m.Type,
             external_cooperation = m.IsVirtual ? true : (bool?)null,
             workplace_id = m.WorkplaceId,
-            workplace_group = m.GroupCode,
+            workplace_group = m.GroupName,       // STANOWISKO_NAZWA - machines with the same name form a group
             hall = m.Hall,
             multi_operation = m.MultiOperation ? true : (bool?)null,
             capabilities = string.IsNullOrWhiteSpace(m.Description) ? null : m.Description,
@@ -174,12 +174,25 @@ public static class TechnologyRequestBuilder
         sb.AppendLine("Machines with external_cooperation = true are external services (heat treatment, coatings, cutting...). Use them only for");
         sb.AppendLine("work the in-house machines cannot do; for them setup_time_min / unit_time_min = internal handling time, lead time goes to the description.");
         sb.AppendLine("Respect machine parameters (table size, travels, turning diameter/length, cutting capacity) when choosing a machine.");
-        sb.AppendLine("Machine GROUPS (from PRODVISOR workplaces, table STANOWISKO): machines with the same workplace_group are workplaces of the same kind");
-        sb.AppendLine("(e.g. group \"04\" = all CNC milling centres). You may combine machines into a group for an operation: put the best machine in");
-        sb.AppendLine("machine_id and the other machines that can do the SAME operation with the same program / set-up in alternative_machine_ids");
-        sb.AppendLine("(the planner then chooses the free one). Use the group code, type and parameters to decide - only add machines that really fit");
-        sb.AppendLine("(size, axes, capacity); an empty list means the operation is bound to machine_id. Never repeat machine_id in the list.");
         sb.AppendLine(JsonSerializer.Serialize(machineList, new JsonSerializerOptions { WriteIndented = true, DefaultIgnoreCondition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull, Encoder = System.Text.Encodings.Web.JavaScriptEncoder.UnsafeRelaxedJsonEscaping }));
+        sb.AppendLine();
+
+        // Machine groups = PRODVISOR workplace names (STANOWISKO -> STANOWISKO_NAZWA): same name = same group.
+        var groups = machines.Where(m => !m.IsVirtual && m.GroupName is not null)
+            .GroupBy(m => m.GroupName!).Where(g => g.Count() > 1).OrderBy(g => g.Key).ToList();
+        if (groups.Count > 0)
+        {
+            sb.AppendLine("## Machine groups (PRODVISOR workplace names - all machines with the same workplace name form one group)");
+            foreach (var g in groups) sb.AppendLine($"- {g.Key}: {string.Join(", ", g.Select(m => m.Id))}");
+            sb.AppendLine("YOU decide for every operation whether it can run on a machine group:");
+            sb.AppendLine("- put the best machine in machine_id;");
+            sb.AppendLine("- check EVERY other member of its group against this part (size, travels, axes, spindle speed, capacity, tolerances):");
+            sb.AppendLine("  all members fit -> list them all in alternative_machine_ids; only some fit -> list only those;");
+            sb.AppendLine("  none fits or the operation needs exactly this machine -> leave alternative_machine_ids empty (single machine);");
+            sb.AppendLine("- the production planner then picks a free machine from machine_id + alternative_machine_ids;");
+            sb.AppendLine("- machines outside the group only if they clearly fit; never repeat machine_id in alternative_machine_ids.");
+            sb.AppendLine("Mention in the operation description when a group member was excluded and why (e.g. \"0407 – za mały stół\").");
+        }
 
         sb.AppendLine();
         sb.AppendLine("Fill \"material\" separately: grade = material designation as written on the drawing (title block / notes),");

@@ -2,7 +2,7 @@
 
 Instrukcja uruchomienia wersji demonstracyjnej na serwerze Linux x64 (Ubuntu / Debian / Rocky / Alma / Fedora).
 Paczka jest **self-contained** – na serwerze nie trzeba instalować .NET. Aplikacja działa jako usługa systemd
-na porcie **5080**, a na czas prezentacji można ją wystawić publicznie tunelem Cloudflare.
+na porcie **5080** w sieci wewnętrznej.
 
 **Czas:** ok. 10 minut. **Potrzebne:** dostęp `sudo` na serwerze, SSH/SCP z komputera z repozytorium.
 
@@ -48,22 +48,11 @@ Instalator:
 
 Jeśli serwer ma firewall: `sudo ufw allow 5080/tcp` (Ubuntu) albo `sudo firewall-cmd --add-port=5080/tcp --permanent && sudo firewall-cmd --reload` (RHEL).
 
-## 5. Publiczny link na prezentację (Cloudflare tunnel)
+## 5. Dostęp dla innych
 
-Nie wymaga otwierania portów ani konta Cloudflare. Link jest ważny, dopóki działa polecenie.
-
-```bash
-curl -fsSL -o cloudflared https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64
-chmod +x cloudflared
-./cloudflared tunnel --no-autoupdate --url http://localhost:5080
-```
-
-W wyjściu pojawi się adres `https://….trycloudflare.com`. Ten link wysyłasz. Ctrl+C zamyka tunel.
-Żeby tunel działał po wylogowaniu z SSH, uruchom go w `tmux` albo `screen`.
-
-> ⚠️ Aplikacja **nie ma logowania**. Każdy z linkiem może zmieniać ustawienia i generować technologie.
-> Jeśli wpiszesz klucz OpenAI, generowanie idzie na Twój koszt – na pokaz dla obcych osób zostaw **tryb mock**
-> albo po prezentacji zamknij tunel.
+Aplikacja **nie ma logowania** – każdy, kto ma dostęp do adresu `http://<adres-serwera>:5080`, może zmieniać ustawienia
+i generować technologie. Wystawiaj ją tylko w sieci wewnętrznej. Jeśli wpiszesz klucz OpenAI, generowanie idzie na koszt
+Twojego projektu OpenAI.
 
 ## 6. Konfiguracja (opcjonalnie)
 

@@ -50,7 +50,6 @@ for _ in $(seq 1 30); do
     echo
     echo "OK - PRODVISOR AI is running:  http://$(hostname -I 2>/dev/null | awk '{print $1}'):$PORT"
     echo "     status:  systemctl status prodvisor-ai      logs:  journalctl -u prodvisor-ai -f"
-    echo "     public link for a demo:  see 'Cloudflare tunnel' in DEPLOY-LINUX.md"
     exit 0
   fi
   sleep 1

@@ -518,12 +518,13 @@
         : `<button type="button" data-act="alt-del" data-alt="${esc(a)}" title="${esc(t('job.altRemove'))}">×</button>`}</span>`).join('');
       if (ed.readOnly) return alts.length ? `<div class="alts"><span class="alts-label">${t('job.alts')}:</span>${chips}</div>` : '';
       const pool = ed.machines.filter((m) => m.active && m.id !== o.machine_id && !alts.includes(m.id) && !m.isVirtual);
-      const same = pool.filter((m) => primary?.groupCode && m.groupCode === primary.groupCode);
+      const same = pool.filter((m) => primary?.groupName && m.groupName === primary.groupName);
       const other = pool.filter((m) => !same.includes(m));
       const opt = (m) => `<option value="${esc(m.id)}">${esc(m.id)} – ${esc(machineLabel(m))}</option>`;
       return `<div class="alts">${alts.length ? `<span class="alts-label">${t('job.alts')}:</span>` : ''}${chips}
         <select class="alt-add"><option value="">＋ ${t('job.addAlt')}</option>
-          ${same.length ? `<optgroup label="${esc(t('job.sameGroup', { g: primary.groupCode }))}">${same.map(opt).join('')}</optgroup>` : ''}
+          ${same.length ? `<option value="__group__">＋＋ ${esc(t('job.addWholeGroup', { g: primary.groupName, n: same.length }))}</option>` : ''}
+          ${same.length ? `<optgroup label="${esc(t('job.sameGroup', { g: primary.groupName }))}">${same.map(opt).join('')}</optgroup>` : ''}
           <optgroup label="${esc(t('job.otherMachines'))}">${other.map(opt).join('')}</optgroup>
         </select></div>`;
     };
@@ -639,7 +640,12 @@
     body.addEventListener('change', (e) => {
       if (!e.target.classList.contains('alt-add') || !e.target.value) return;
       const op = ed.ops[+e.target.closest('tr').dataset.idx];
-      op.alternative_machine_ids = [...new Set([...(op.alternative_machine_ids || []), e.target.value])];
+      // "__group__" = all machines of the same PRODVISOR workplace group (STANOWISKO_NAZWA)
+      const primary = ed.machines.find((m) => m.id === op.machine_id);
+      const add = e.target.value === '__group__'
+        ? ed.machines.filter((m) => m.active && !m.isVirtual && m.id !== op.machine_id && primary?.groupName && m.groupName === primary.groupName).map((m) => m.id)
+        : [e.target.value];
+      op.alternative_machine_ids = [...new Set([...(op.alternative_machine_ids || []), ...add])];
       renderOps(); markDirty();
     });
     $('#notes').addEventListener('input', (e) => { ed.notes = e.target.value; markDirty(); });
@@ -825,7 +831,7 @@
     const rowHtml = (m, isNew) => `
       <tr data-id="${esc(m.id)}" ${isNew ? 'data-new="1"' : ''} class="${m.active ? '' : 'inactive'}">
         <td class="c-id">${isNew ? '<input type="text" data-f="id" value="" placeholder="M10">'
-          : `<b class="mono">${esc(m.id)}</b>${m.prodvisorId ? `<div class="small muted">ID ${m.prodvisorId}${m.workplaceId ? ` · ${t('mach.ws')} ${m.workplaceId}` : ''}</div>` : ''}${m.groupCode ? `<div class="small"><span class="badge info">${t('mach.group')} ${esc(m.groupCode)}</span>${m.hall != null && m.hall > 0 ? ` <span class="muted">${t('mach.hall')} ${m.hall}</span>` : ''}</div>` : ''}`}</td>
+          : `<b class="mono">${esc(m.id)}</b>${m.prodvisorId ? `<div class="small muted">ID ${m.prodvisorId}${m.workplaceId ? ` · ${t('mach.ws')} ${m.workplaceId}` : ''}</div>` : ''}${m.groupName ? `<div class="small"><span class="badge info">${esc(m.groupName)}</span>${m.hall != null && m.hall > 0 ? ` <span class="muted">${t('mach.hall')} ${m.hall}</span>` : ''}</div>` : ''}`}</td>
         <td><input type="text" data-f="name" value="${esc(m.name)}">${m.isVirtual ? `<span class="badge accent" style="margin-top:4px">${t('mach.coop')}</span>` : ''}</td>
         <td><input type="text" data-f="type" value="${esc(m.type)}" list="machine-types"></td>
         <td><textarea data-f="description" rows="2" placeholder="${esc(t('mach.descHint'))}">${esc(m.description)}</textarea>${params(m)}</td>
