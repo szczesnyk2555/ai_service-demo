@@ -148,9 +148,6 @@ public static class SeedData
 
     public static void Seed(AppDbContext db)
     {
-        if (!db.Machines.Any())
-            db.Machines.AddRange(DefaultMachines.Select(Clone));
-
         foreach (var (id, text) in DefaultPrompts)
             if (db.Prompts.Find(id) is null)
                 db.Prompts.Add(new PromptTemplate { Id = id, Text = text });
@@ -158,8 +155,4 @@ public static class SeedData
         db.SaveChanges();
     }
 
-    static Machine Clone(Machine m) => new()
-    {
-        Id = m.Id, Name = m.Name, Type = m.Type, Description = m.Description, HourlyRate = m.HourlyRate, Active = m.Active
-    };
 }

@@ -79,6 +79,7 @@
     generate: renderGenerate,
     history: renderHistory,
     machines: renderMachines,
+    materials: renderMaterials,
     prompts: renderPrompts,
     settings: renderSettings,
     job: renderJob,
@@ -397,7 +398,7 @@
       machines,
       ops: job.result.operations.map((o) => ({ ...o })),
       notes: job.result.general_notes || '',
-      material: { grade: null, stock: null, heat_treatment: null, source: 'unknown', ...(job.result.material || {}) },
+      material: { grade: null, stock: null, heat_treatment: null, source: 'unknown', stock_form: null, stock_size_mm: null, stock_length_mm: null, system_material_id: null, system_material_reason: null, system_material_by: null, ...(job.result.material || {}) },
       batch: job.batchSize || 1,
       readOnly: !!job.approvedAt,
       dirty: false,
@@ -428,7 +429,13 @@
             <input type="text" id="m-stock" data-m="stock" value="${esc(ed.material.stock ?? '')}" ${dis}></div>
           <div class="field" style="margin-bottom:0"><label for="m-heat">${t('job.matHeat')}</label>
             <input type="text" id="m-heat" data-m="heat_treatment" value="${esc(ed.material.heat_treatment ?? '')}" placeholder="–" ${dis}></div>
-          ${job.material ? `<div class="small muted" style="margin-top:8px">${t('job.matUser', { v: esc(job.material) })}</div>` : ''}
+          <div class="row-fields" style="margin-top:10px">
+            <div class="field"><label>${t('job.matForm')}</label><select data-m="stock_form" ${dis}>${formOptions(ed.material.stock_form || 'other')}</select></div>
+            <div class="field"><label>${t('job.matSize')}</label><input type="number" data-m="stock_size_mm" value="${esc(ed.material.stock_size_mm ?? '')}" ${dis}></div>
+            <div class="field"><label>${t('job.matLength')}</label><input type="number" data-m="stock_length_mm" value="${esc(ed.material.stock_length_mm ?? '')}" ${dis}></div>
+          </div>
+          ${job.material ? `<div class="small muted">${t('job.matUser', { v: esc(job.material) })}</div>` : ''}
+          <div id="mm-box"></div>
         </div>
         <div class="card">
           <div class="card-title">${t('job.notes')}</div>
@@ -572,7 +579,7 @@
         });
         ed.job = job;
         if (version === ed.version) ed.dirty = false;   // no newer edits while saving
-        applyWarnings(); renderBadges();
+        applyWarnings(); renderBadges(); ed.onSaved?.();
       } catch (e) { toast(e.message, 'err'); }
       ed.saving = false; renderSaveState();
     };
@@ -607,9 +614,28 @@
     });
     $('#notes').addEventListener('input', (e) => { ed.notes = e.target.value; markDirty(); });
     $$('[data-m]', main).forEach((inp) => inp.addEventListener('input', () => {
-      ed.material[inp.dataset.m] = inp.value.trim() === '' ? null : inp.value;
+      const v = inp.value.trim();
+      ed.material[inp.dataset.m] = v === '' ? null : inp.type === 'number' ? Number(v) : inp.value;
+      // Grade / form / size changed -> the confirmed PRODVISOR material no longer applies; server re-matches on save.
+      if (['grade', 'stock_form', 'stock_size_mm'].includes(inp.dataset.m)) { ed.material.system_material_id = null; ed.material.system_material_by = null; ed.material.system_material_reason = null; }
       markDirty();
     }));
+    // Material from the PRODVISOR list chosen by the technologist
+    const renderMaterialMatch = () => {
+      $('#mm-box').innerHTML = materialMatchHtml(ed.job.materialMatch, ed.material.system_material_id, ed.readOnly,
+        { by: ed.material.system_material_by, reason: ed.material.system_material_reason });
+      const sel = $('#m-system');
+      if (!sel) return;
+      sel.disabled = ed.readOnly;
+      sel.addEventListener('change', () => {
+        ed.material.system_material_id = sel.value ? Number(sel.value) : null;
+        ed.material.system_material_by = 'user';   // the technologist overrides the AI choice
+        renderMaterialMatch();
+        markDirty();
+      });
+    };
+    renderMaterialMatch();
+    ed.onSaved = renderMaterialMatch;
     $('#warn-list').addEventListener('click', (e) => {
       const no = e.target.closest('li[data-op]')?.dataset.op;
       const idx = ed.ops.findIndex((o) => String(o.no) === no);
@@ -631,6 +657,7 @@
     $('#btn-regen').addEventListener('click', async () => { await save(); regenerate(ed.job.id); });
     $('#btn-export').addEventListener('click', async () => { await save(); location.href = `/api/jobs/${ed.job.id}/export`; });
     $('#btn-approve').addEventListener('click', async () => {
+      if (ed.material.system_material_id !== (ed.job.result.material?.system_material_id ?? null)) ed.dirty = true;
       await save();
       try {
         const job = await api('POST', `/api/jobs/${ed.job.id}/approve`);
@@ -728,15 +755,28 @@
   // =========================================================================================
   async function renderMachines(_, token) {
     view.innerHTML = loading();
-    const machines = await api('GET', '/api/machines');
+    const [machines, pv] = await Promise.all([api('GET', '/api/machines'), api('GET', '/api/prodvisor/info')]);
     if (token !== routeToken) return;
 
     const types = [...new Set(machines.map((m) => m.type))].sort();
+    const ui = { filter: 'own', q: '', onlyActive: false };
 
     view.innerHTML = `
       <div class="page-head">
         <div><h1>${t('mach.title')}</h1><p>${t('mach.subtitle')}</p></div>
-        <button class="btn primary" id="btn-add-machine">＋ ${t('mach.add')}</button>
+        <div class="btn-row">
+          <span class="small muted">${t('mach.source')}: <b>${esc(pv.provider)}</b></span>
+          <button class="btn" id="btn-sync">⟳ ${t('mach.sync')}</button>
+          <button class="btn primary" id="btn-add-machine">＋ ${t('mach.add')}</button>
+        </div>
+      </div>
+      <div class="toolbar">
+        <div class="seg" id="mach-filter">
+          <button data-f="own">${t('mach.fOwn')}</button><button data-f="coop">${t('mach.fCoop')}</button><button data-f="all">${t('mach.fAll')}</button>
+        </div>
+        <input type="text" id="mach-q" placeholder="${esc(t('mach.search'))}" style="max-width:280px">
+        <label class="toggle small"><input type="checkbox" id="mach-active"> ${t('mach.onlyActive')}</label>
+        <span class="muted small" id="mach-count"></span>
       </div>
       <datalist id="machine-types">${types.map((x) => `<option value="${esc(x)}">`).join('')}</datalist>
       <div class="table-wrap"><table class="machines">
@@ -748,12 +788,16 @@
       </table></div>`;
 
     const body = $('#machines-body');
+    const byId = new Map(machines.map((m) => [m.id, m]));
+    const params = (m) => (m.parameters || []).length
+      ? `<div class="params">${m.parameters.map((p) => `<span class="param"><span>${esc(p.name)}</span> ${esc(p.value)}</span>`).join('')}</div>` : '';
     const rowHtml = (m, isNew) => `
       <tr data-id="${esc(m.id)}" ${isNew ? 'data-new="1"' : ''} class="${m.active ? '' : 'inactive'}">
-        <td class="c-id">${isNew ? `<input type="text" data-f="id" value="" placeholder="M10">` : `<b class="mono">${esc(m.id)}</b>`}</td>
-        <td><input type="text" data-f="name" value="${esc(m.name)}"></td>
+        <td class="c-id">${isNew ? '<input type="text" data-f="id" value="" placeholder="M10">'
+          : `<b class="mono">${esc(m.id)}</b>${m.prodvisorId ? `<div class="small muted">ID ${m.prodvisorId}</div>` : ''}`}</td>
+        <td><input type="text" data-f="name" value="${esc(m.name)}">${m.isVirtual ? `<span class="badge accent" style="margin-top:4px">${t('mach.coop')}</span>` : ''}</td>
         <td><input type="text" data-f="type" value="${esc(m.type)}" list="machine-types"></td>
-        <td><textarea data-f="description" rows="2">${esc(m.description)}</textarea></td>
+        <td><textarea data-f="description" rows="2" placeholder="${esc(t('mach.descHint'))}">${esc(m.description)}</textarea>${params(m)}</td>
         <td class="c-rate"><input type="number" class="num" min="0" step="5" data-f="hourlyRate" value="${esc(m.hourlyRate)}"></td>
         <td class="c-active"><label class="toggle"><input type="checkbox" data-f="active" ${m.active ? 'checked' : ''}></label></td>
         <td class="c-act">
@@ -761,7 +805,22 @@
           ${isNew ? `<button class="btn sm" data-act="cancel">${t('mach.cancel')}</button>` : `<button class="btn sm danger" data-act="delete">${t('mach.delete')}</button>`}
         </td>
       </tr>`;
-    body.innerHTML = machines.map((m) => rowHtml(m, false)).join('');
+
+    const renderRows = () => {
+      const q = ui.q.trim().toLowerCase();
+      const list = [...byId.values()].filter((m) =>
+        (ui.filter === 'all' || (ui.filter === 'coop') === !!m.isVirtual)
+        && (!ui.onlyActive || m.active)
+        && (!q || `${m.id} ${m.name} ${m.type}`.toLowerCase().includes(q)));
+      body.innerHTML = list.map((m) => rowHtml(m, false)).join('');
+      $('#mach-count').textContent = t('mach.count', { n: list.length, active: list.filter((m) => m.active).length });
+      $$('#mach-filter button').forEach((b) => b.classList.toggle('active', b.dataset.f === ui.filter));
+    };
+    renderRows();
+
+    $$('#mach-filter button').forEach((b) => b.addEventListener('click', () => { ui.filter = b.dataset.f; renderRows(); }));
+    $('#mach-q').addEventListener('input', (e) => { ui.q = e.target.value; renderRows(); });
+    $('#mach-active').addEventListener('change', (e) => { ui.onlyActive = e.target.checked; renderRows(); });
 
     const readRow = (tr) => ({
       id: tr.dataset.new ? $('[data-f=id]', tr).value.trim() : tr.dataset.id,
@@ -778,7 +837,9 @@
         const saved = tr.dataset.new
           ? await api('POST', '/api/machines', dto)
           : await api('PUT', `/api/machines/${encodeURIComponent(dto.id)}`, dto);
-        tr.outerHTML = rowHtml(saved, false);
+        const merged = { ...(byId.get(saved.id) || {}), ...dto, id: saved.id };   // keep PRODVISOR data (parameters, IDs)
+        byId.set(saved.id, merged);
+        tr.outerHTML = rowHtml(merged, false);
         toast(t('mach.saved', { id: saved.id }), 'ok');
       } catch (e) { toast(e.message, 'err'); }
     };
@@ -789,8 +850,7 @@
       tr.classList.add('dirty');
       $('[data-act=save]', tr).hidden = false;
     });
-    // Toggling "active" on an existing machine saves immediately (handy for the demo:
-    // deactivate a machine, regenerate, and it disappears from the schema enum).
+    // Toggling "active" saves immediately (demo: deactivate a machine, regenerate - it disappears from the schema enum).
     body.addEventListener('change', (e) => {
       if (e.target.dataset.f !== 'active') return;
       const tr = e.target.closest('tr');
@@ -807,6 +867,7 @@
         if (!confirm(t('mach.confirmDelete', { id: tr.dataset.id }))) return;
         try {
           await api('DELETE', `/api/machines/${encodeURIComponent(tr.dataset.id)}`);
+          byId.delete(tr.dataset.id);
           toast(t('mach.deleted', { id: tr.dataset.id }), 'ok');
           tr.remove();
         } catch (err) { toast(err.message, 'err'); }
@@ -816,6 +877,105 @@
       body.insertAdjacentHTML('afterbegin', rowHtml({ id: '', name: '', type: '', description: '', hourlyRate: 100, active: true }, true));
       $('tr[data-new] [data-f=id]', body).focus();
     });
+    $('#btn-sync').addEventListener('click', async (e) => {
+      e.target.disabled = true;
+      try {
+        const r = await api('POST', '/api/machines/sync');
+        toast(t('mach.synced', { src: r.source, added: r.machinesAdded, updated: r.machinesUpdated, materials: r.materials }), 'ok');
+        route();
+      } catch (err) { toast(err.message, 'err'); e.target.disabled = false; }
+    });
+  }
+
+  // =========================================================================================
+  // Materials (PRODVISOR dbo.MaterialsKind, read-only)
+  // =========================================================================================
+  async function renderMaterials(_, token) {
+    view.innerHTML = loading();
+    const materials = await api('GET', '/api/materials');
+    if (token !== routeToken) return;
+
+    view.innerHTML = `
+      <div class="page-head"><div><h1>${t('mat.title')}</h1><p>${t('mat.subtitle')}</p></div></div>
+      <div class="grid-2">
+        <div>
+          <div class="toolbar">
+            <input type="text" id="mat-q" placeholder="${esc(t('mat.search'))}" style="max-width:320px">
+            <span class="muted small" id="mat-count"></span>
+          </div>
+          <div class="table-wrap" style="max-height:70vh;overflow:auto"><table class="list">
+            <thead><tr><th style="width:80px">ID</th><th>${t('mat.name')}</th><th style="width:90px">${t('mach.col.active')}</th></tr></thead>
+            <tbody id="mat-body"></tbody>
+          </table></div>
+        </div>
+        <div class="card">
+          <div class="card-title">${t('mat.tryTitle')}</div>
+          <p class="muted small" style="margin-top:0">${t('mat.tryHint')}</p>
+          <div class="row-fields">
+            <div class="field"><label>${t('job.matGrade')}</label><input type="text" id="try-grade" value="42CrMo4"></div>
+            <div class="field"><label>${t('job.matForm')}</label><select id="try-form">${formOptions('round_bar')}</select></div>
+            <div class="field"><label>${t('job.matSize')}</label><input type="number" id="try-size" value="60"></div>
+          </div>
+          <div id="try-result"></div>
+        </div>
+      </div>`;
+
+    const renderList = (q) => {
+      const n = (s) => s.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/ł/g, 'l');
+      const list = q ? materials.filter((m) => n(m.name).includes(n(q))) : materials;
+      $('#mat-body').innerHTML = list.slice(0, 500).map((m) =>
+        `<tr class="${m.active ? '' : 'inactive'}"><td class="mono">${m.id}</td><td>${esc(m.name)}</td><td>${m.active ? '✓' : `<span class="muted">${t('mat.inactive')}</span>`}</td></tr>`).join('');
+      $('#mat-count').textContent = t('mat.count', { n: list.length });
+    };
+    renderList('');
+    $('#mat-q').addEventListener('input', (e) => renderList(e.target.value));
+
+    const tryMatch = async () => {
+      const qs = new URLSearchParams({ grade: $('#try-grade').value, form: $('#try-form').value, size: $('#try-size').value || '' });
+      try { $('#try-result').innerHTML = materialMatchHtml(await api('GET', `/api/materials/match?${qs}`), null, true); }
+      catch (e) { $('#try-result').innerHTML = errorBox(e); }
+    };
+    ['#try-grade', '#try-form', '#try-size'].forEach((s) => $(s).addEventListener('input', tryMatch));
+    tryMatch();
+  }
+
+  const STOCK_FORMS = ['round_bar', 'hex_bar', 'square_bar', 'flat_bar', 'plate', 'tube', 'profile', 'other'];
+  function formOptions(selected) {
+    return STOCK_FORMS.map((f) => `<option value="${f}" ${f === selected ? 'selected' : ''}>${t(`form.${f}`)}</option>`).join('');
+  }
+
+  /** Result of matching the drawing material against the PRODVISOR material list. */
+  function materialMatchHtml(match, selectedId, readOnly, ai) {
+    if (!match) return '';
+    const cands = match.candidates || [];
+    const selected = selectedId != null
+      ? (cands.find((c) => c.id === selectedId) || (match.selected?.id === selectedId ? match.selected : null) || { id: selectedId, name: `ID ${selectedId}` })
+      : null;
+    const by = ai?.by;
+    const status = selected
+      ? `<span class="badge ok">✓ ${by === 'user' ? t('mm.byUser') : by === 'ai' ? t('mm.byAi') : t('mm.matched')}</span>`
+      : {
+        matched: `<span class="badge warn">${t('mm.choose')}</span>`,
+        grade_only: `<span class="badge warn">${t('mm.gradeOnly')}</span>`,
+        not_found: `<span class="badge err">✕ ${t('mm.notFound')}</span>`,
+        no_grade: `<span class="badge">${t('mm.noGrade')}</span>`,
+      }[match.status] || '';
+    // Options: the chosen item (even if the rules did not propose it) + rule-based candidates
+    const options = [...(selected && !cands.some((c) => c.id === selected.id) ? [selected] : []), ...cands];
+    return `
+      <div class="mm">
+        <div class="mm-head"><span class="label">${t('mm.title')}</span> ${status}</div>
+        ${selected ? `<div class="mm-selected"><b>${esc(selected.name)}</b> <span class="muted">(ID ${selected.id})</span></div>` : ''}
+        ${ai?.reason ? `<div class="small" style="margin-top:4px"><span class="badge info">AI</span> ${esc(ai.reason)}</div>` : ''}
+        ${!selected && match.status === 'not_found' ? `<div class="alert err" style="margin-top:8px">${t('mm.notFoundText', { grade: esc(match.grade || '') })}</div>` : ''}
+        ${options.length ? `
+          <select id="m-system" style="margin-top:8px">
+            <option value="">${t('mm.chooseOption')}</option>
+            ${options.map((c) => `<option value="${c.id}" ${selected && c.id === selected.id ? 'selected' : ''}>${esc(c.name)} (ID ${c.id})</option>`).join('')}
+          </select>` : ''}
+        ${cands.length ? `<details style="margin-top:6px"><summary class="small muted" style="cursor:pointer">${t('mm.rules', { n: cands.length })}${match.gradeGroup ? ` · ${esc(match.gradeGroup)}` : ''}</summary>
+          <ul class="mm-list">${cands.map((c) => `<li><b>${esc(c.name)}</b> <span class="muted">– ${esc(c.reason)}</span></li>`).join('')}</ul></details>` : ''}
+      </div>`;
   }
 
   // =========================================================================================

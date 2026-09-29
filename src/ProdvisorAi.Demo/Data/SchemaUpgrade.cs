@@ -12,10 +12,24 @@ public static class SchemaUpgrade
     [
         ("Jobs", "SourceDrawingPath", "TEXT NULL"),
         ("Jobs", "DrawingText", "TEXT NULL"),
+        ("Machines", "ProdvisorId", "INTEGER NULL"),
+        ("Machines", "TypeId", "INTEGER NULL"),
+        ("Machines", "Kind", "INTEGER NULL"),
+        ("Machines", "IsVirtual", "INTEGER NOT NULL DEFAULT 0"),
+        ("Machines", "ParametersJson", "TEXT NULL"),
     ];
 
     public static void Apply(AppDbContext db)
     {
+        // Tables added in later versions (EnsureCreated only creates tables for a brand-new database).
+        db.Database.ExecuteSqlRaw("""
+            CREATE TABLE IF NOT EXISTS "Materials" (
+                "Id" INTEGER NOT NULL CONSTRAINT "PK_Materials" PRIMARY KEY,
+                "Name" TEXT NOT NULL,
+                "AlloyId" INTEGER NULL,
+                "Active" INTEGER NOT NULL)
+            """);
+
         foreach (var (table, column, type) in AddedColumns)
         {
             var exists = db.Database

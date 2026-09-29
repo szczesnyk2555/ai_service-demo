@@ -4,6 +4,7 @@ using System.Text.Json.Nodes;
 using Microsoft.EntityFrameworkCore;
 using ProdvisorAi.Demo.Data;
 using ProdvisorAi.Demo.Models;
+using ProdvisorAi.Demo.Prodvisor;
 using ProdvisorAi.Demo.Services;
 
 namespace ProdvisorAi.Demo.Endpoints;
@@ -146,6 +147,18 @@ public static class JobEndpoints
                 generated_by = new { model = job.Model, mock = job.Mock, job_id = job.Id, edited_by_user = job.Edited },
                 summary = Summarize(result, machines, batch, config["Demo:Currency"] ?? "PLN"),
                 technology = result,
+                // Ready for import into PRODVISOR: operations with MASZYNY.ID, material with MaterialsKind.ID
+                prodvisor = new
+                {
+                    material_kind_id = result.Material?.SystemMaterialId,
+                    operations = result.Operations.Select(o => new
+                    {
+                        o.No, o.Name, machine_code = o.MachineId,
+                        maszyny_id = machines.TryGetValue(o.MachineId, out var m) ? m.ProdvisorId : null,
+                        cooperation = machines.TryGetValue(o.MachineId, out var m2) && m2.IsVirtual,
+                        tpz_min = o.SetupTimeMin, tj_min = o.UnitTimeMin,
+                    }),
+                },
             };
 
             var name = $"technology_{(job.PartNumber ?? job.Id[..8]).Replace(' ', '_')}.json";
@@ -196,15 +209,43 @@ public static class JobEndpoints
     {
         var result = ReadResult(job);
         List<ValidationWarning>? warnings = null;
+        object? materialMatch = null;
         if (result is not null)
         {
             // Validated on every read against the CURRENT machine list (a machine may have been deactivated since).
             var machines = await db.Machines.AsNoTracking().ToListAsync();
             warnings = TechnologyValidator.Validate(result, machines, job.Material);
+
+            // Material from the drawing vs. the PRODVISOR material list (MaterialsKind)
+            if (result.Material is { } mat)
+            {
+                var materials = await db.Materials.AsNoTracking().ToListAsync();
+                var match = MaterialMatcher.Match(mat.Grade, mat.StockForm, mat.StockSizeMm, materials);
+                // The model chooses (system_material_id); the rule-based matcher is the cross-check and the source of candidates.
+                var selected = mat.SystemMaterialId is { } sid ? materials.FirstOrDefault(m => m.Id == sid) : null;
+                var rulesBest = match.Status == "matched" ? match.Candidates[0] : null;
+                materialMatch = new
+                {
+                    match.Status, match.Grade, match.GradeGroup, match.Candidates, selected,
+                    by = mat.SystemMaterialBy, reason = mat.SystemMaterialReason,
+                };
+
+                if (selected is null && match.Status == "not_found")
+                    warnings.Add(new("material_not_in_system", "warning", null, "material", TechnologyValidator.Args(("grade", mat.Grade ?? "")),
+                        $"Material {mat.Grade} is not in the PRODVISOR material list."));
+                else if (selected is null)
+                    warnings.Add(new("material_not_selected", "warning", null, "material", TechnologyValidator.Args(("grade", mat.Grade ?? "")),
+                        $"No PRODVISOR material selected for {mat.Grade} - candidates exist, please choose."));
+                else if (rulesBest is not null && rulesBest.Id != selected.Id && mat.SystemMaterialBy == "ai")
+                    warnings.Add(new("material_ai_differs", "info", null, "material",
+                        TechnologyValidator.Args(("ai", selected.Name), ("rules", rulesBest.Name)),
+                        $"AI chose {selected.Name}; rule-based matching suggests {rulesBest.Name}."));
+            }
         }
 
         return new
         {
+            materialMatch,
             id = job.Id,
             status = job.Status,
             createdAt = job.CreatedAt,

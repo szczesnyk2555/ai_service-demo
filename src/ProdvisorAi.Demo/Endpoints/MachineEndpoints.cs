@@ -1,6 +1,7 @@
 using System.Text.RegularExpressions;
 using Microsoft.EntityFrameworkCore;
 using ProdvisorAi.Demo.Data;
+using ProdvisorAi.Demo.Prodvisor;
 
 namespace ProdvisorAi.Demo.Endpoints;
 
@@ -16,8 +17,38 @@ public static partial class MachineEndpoints
     {
         var group = app.MapGroup("/api/machines");
 
+        // Own machines first (by code), then cooperation. Parameters are returned parsed.
         group.MapGet("/", async (AppDbContext db) =>
-            await db.Machines.AsNoTracking().OrderBy(m => m.Id).ToListAsync());
+            (await db.Machines.AsNoTracking().ToListAsync())
+                .OrderBy(m => m.IsVirtual).ThenBy(m => m.IsVirtual ? m.Name : m.Id)
+                .Select(m => new
+                {
+                    m.Id, m.Name, m.Type, m.Description, m.HourlyRate, m.Active,
+                    m.ProdvisorId, m.IsVirtual, m.Kind,
+                    Parameters = m.ParametersJson is null ? [] : System.Text.Json.JsonSerializer.Deserialize<List<MachineParameter>>(m.ParametersJson)!,
+                }));
+
+        // Re-read machines + materials from PRODVISOR (database if configured, otherwise the embedded snapshot).
+        group.MapPost("/sync", async (ProdvisorSource source, ProdvisorImporter importer, CancellationToken ct) =>
+        {
+            try { return Results.Ok(await importer.ImportAsync(await source.LoadAsync(ct), ct)); }
+            catch (Exception ex) when (ex is not OperationCanceledException)
+            {
+                return Results.BadRequest(new { error = $"Cannot read PRODVISOR data ({source.Provider}): {ex.Message}" });
+            }
+        });
+
+        // PRODVISOR material list (dbo.MaterialsKind) + matching test endpoint
+        app.MapGet("/api/materials", async (AppDbContext db, string? q) =>
+        {
+            var all = await db.Materials.AsNoTracking().OrderBy(m => m.Name).ToListAsync();
+            if (string.IsNullOrWhiteSpace(q)) return Results.Ok(all);
+            var needle = MaterialMatcher.Normalize(q);
+            return Results.Ok(all.Where(m => MaterialMatcher.Normalize(m.Name).Contains(needle)));
+        });
+        app.MapGet("/api/materials/match", async (AppDbContext db, string grade, string? form, double? size) =>
+            MaterialMatcher.Match(grade, form, size, await db.Materials.AsNoTracking().ToListAsync()));
+        app.MapGet("/api/prodvisor/info", (ProdvisorSource source) => new { provider = source.Provider, database = source.IsDatabase });
 
         group.MapPost("/", async (MachineDto dto, AppDbContext db) =>
         {

@@ -268,3 +268,20 @@ table.list tbody tr.clickable { cursor: pointer; }
 .material-card .field { margin-bottom: 10px; }
 @media (max-width: 1280px) { .grid-3 { grid-template-columns: 1fr 1fr; } }
 @media (max-width: 960px) { .grid-3 { grid-template-columns: 1fr; } }
+
+/* PRODVISOR integration: machines toolbar, parameters, material matching */
+.toolbar { display: flex; gap: 14px; align-items: center; flex-wrap: wrap; margin-bottom: 12px; }
+.seg { display: inline-flex; border: 1px solid var(--border-strong); border-radius: 7px; overflow: hidden; }
+.seg button { border: 0; background: var(--surface); padding: 6px 14px; font: inherit; font-size: 13.5px; font-weight: 600; color: var(--text-2); cursor: pointer; }
+.seg button + button { border-left: 1px solid var(--border); }
+.seg button.active { background: var(--text); color: #fff; }
+.params { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 6px; }
+.param { font-size: 11.5px; background: var(--surface-2); border: 1px solid var(--border); border-radius: 4px; padding: 1px 6px; white-space: nowrap; }
+.param span { color: var(--muted); }
+table.list tr.inactive td { opacity: .5; }
+.mm { margin-top: 12px; padding-top: 12px; border-top: 1px dashed var(--border-strong); }
+.mm-head { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.mm-list { list-style: none; margin: 8px 0 0; padding: 0; font-size: 12.5px; display: flex; flex-direction: column; gap: 3px; }
+.material-card .row-fields { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 0 8px; }
+.machines td:nth-child(2) { min-width: 210px; } .machines td:nth-child(3) { min-width: 170px; }
+.mm-selected { margin-top: 6px; }
