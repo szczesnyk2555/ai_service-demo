@@ -223,7 +223,7 @@ public sealed partial class DxfDrawingConverter(ILogger<DxfDrawingConverter> log
             canvas.DrawPath(path, fill);
         }
 
-        using var typeface = SKTypeface.FromFamilyName("Arial") ?? SKTypeface.Default;
+        var typeface = DrawingFont.Value;   // shared, not disposed
         foreach (var l in s.Labels)
         {
             var size = (float)(l.Height * scale);
@@ -251,6 +251,29 @@ public sealed partial class DxfDrawingConverter(ILogger<DxfDrawingConverter> log
     }
 
     static string FirstLine(string text) => text.Split('\n')[0];
+
+    /// <summary>
+    /// Font for drawing texts. Windows has Arial; Linux servers usually have DejaVu / Liberation. The Linux Skia build
+    /// used here has no fontconfig, so if lookup by family name fails the font is loaded directly from a known file.
+    /// </summary>
+    static readonly Lazy<SKTypeface> DrawingFont = new(() =>
+    {
+        foreach (var family in new[] { "Arial", "Liberation Sans", "DejaVu Sans", "Helvetica" })
+        {
+            var tf = SKTypeface.FromFamilyName(family);
+            if (tf is not null && string.Equals(tf.FamilyName, family, StringComparison.OrdinalIgnoreCase)) return tf;
+        }
+        foreach (var file in new[]
+        {
+            "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", "/usr/share/fonts/dejavu/DejaVuSans.ttf", "/usr/share/fonts/TTF/DejaVuSans.ttf",
+            "/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf", "/usr/share/fonts/liberation-sans/LiberationSans-Regular.ttf",
+            @"C:\Windows\Fonts\arial.ttf",
+        })
+        {
+            if (File.Exists(file) && SKTypeface.FromFile(file) is { } tf) return tf;
+        }
+        return SKTypeface.Default;   // last resort - on a server without any fonts texts may not be drawn
+    });
 
     // ============================================================================================
     // Text / dimension extraction

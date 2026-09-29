@@ -22,6 +22,7 @@ You upload a drawing (PNG / JPG / PDF). The service sends it to OpenAI together 
 - [Mock mode](#mock-mode)
 - [Configuration reference](#configuration-reference)
 - [Installing as a Windows Service](#installing-as-a-windows-service)
+- [Linux server (demo) – instrukcja wdrożenia](docs/DEPLOY-LINUX.md)
 - [How it works](#how-it-works)
 - [API endpoints](#api-endpoints)
 - [Project structure](#project-structure)
