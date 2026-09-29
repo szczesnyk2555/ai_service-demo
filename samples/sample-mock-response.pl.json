@@ -1,0 +1,75 @@
+{
+  "operations": [
+    {
+      "no": 1,
+      "name": "Cięcie materiału",
+      "machine_id": "0101",
+      "description": "Ciąć pręt okrągły Ø45 ze stali C45 na długość 184 mm (180 mm długości całkowitej + 4 mm naddatku na planowanie).",
+      "setup_time_min": 10,
+      "unit_time_min": 2.5,
+      "tools": "Brzeszczot do stali",
+      "confidence": "high"
+    },
+    {
+      "no": 2,
+      "name": "Toczenie CNC - strona A",
+      "machine_id": "0502",
+      "description": "Mocowanie na surowym pręcie. Planować stronę A, nawiercić nakiełek, toczyć zgrubnie i wykańczająco Ø40, toczyć Ø25h6 x 40 mm z naddatkiem 0,2 mm na szlifowanie, fazka 1x45°.",
+      "setup_time_min": 35,
+      "unit_time_min": 6.0,
+      "tools": "Płytka CNMG 120408 (zgrubna), VBMT 160404 (wykańczająca), nawiertak A3,15",
+      "confidence": "high"
+    },
+    {
+      "no": 3,
+      "name": "Toczenie CNC - strona B",
+      "machine_id": "0502",
+      "description": "Przemocować na Ø40 w miękkich szczękach. Planować na długość 180 ±0,1, nawiercić nakiełek, toczyć Ø30k6 x 40 mm z naddatkiem 0,2 mm na szlifowanie, fazka 1x45°.",
+      "setup_time_min": 20,
+      "unit_time_min": 4.5,
+      "tools": "Płytka VBMT 160404, nawiertak A3,15, miękkie szczęki Ø40",
+      "confidence": "high"
+    },
+    {
+      "no": 4,
+      "name": "Frezowanie CNC - rowek wpustowy",
+      "machine_id": "0402",
+      "description": "Mocowanie w pryzmie na Ø40. Frezować rowek wpustowy 8P9 x 28 mm, głębokość t=4 mm, na czopie Ø30k6, 6 mm od odsadzenia.",
+      "setup_time_min": 30,
+      "unit_time_min": 4.0,
+      "tools": "Frez węglikowy Ø8 do rowków wpustowych, pryzma",
+      "confidence": "medium"
+    },
+    {
+      "no": 5,
+      "name": "Szlifowanie czopów łożyskowych",
+      "machine_id": "0302",
+      "description": "W kłach: szlifować czopy Ø25h6 i Ø30k6 na wymiar, Ra 1,6.",
+      "setup_time_min": 25,
+      "unit_time_min": 5.0,
+      "tools": "Ściernica, mikrometry 0-25 / 25-50 mm",
+      "confidence": "medium"
+    },
+    {
+      "no": 6,
+      "name": "Gratowanie",
+      "machine_id": "1501",
+      "description": "Usunąć zadziory z krawędzi rowka wpustowego i fazek, stępić ostre krawędzie maks. 0,3, oczyścić detal.",
+      "setup_time_min": 5,
+      "unit_time_min": 1.5,
+      "tools": "Gratownik, włóknina ścierna",
+      "confidence": "high"
+    },
+    {
+      "no": 7,
+      "name": "Kontrola końcowa",
+      "machine_id": "1301",
+      "description": "Sprawdzić Ø25h6, Ø30k6, szerokość 8P9 i głębokość rowka, długość całkowitą 180 ±0,1, Ra 1,6 na czopach łożyskowych. Pierwsza sztuka 100%, dalej co 10. sztuka. Wyniki zapisać w raporcie kontroli.",
+      "setup_time_min": 15,
+      "unit_time_min": 3.5,
+      "tools": "Mikrometry 0-25 / 25-50 mm, sprawdzian do rowków 8P9, chropowatościomierz",
+      "confidence": "high"
+    }
+  ],
+  "general_notes": "[ODPOWIEDŹ MOCK] Wałek stopniowany Ø25h6 / Ø40 / Ø30k6, długość całkowita 180 mm, materiał C45 wg tabliczki rysunkowej. Przyjęty materiał wyjściowy: pręt okrągły Ø45. Czopy łożyskowe h6/k6 z Ra 1,6 wykańczane na szlifierce do wałków 0302 (naddatek 0,2 mm z toczenia) - jeśli toczenie wykańczające jest dla klienta wystarczające, operację 5 można usunąć. Oba zamocowania toczenia na tej samej tokarce CNC 0502. Rowek wpustowy frezowany na małej frezarce CNC 0402. Na liście maszyn nie ma myjki; czyszczenie ujęte w gratowaniu. Głębokość rowka odczytana jako t=4 mm - proszę zweryfikować. Obróbka cieplna nie jest określona na rysunku. Czasy oszacowane dla partii 50 szt."
+}
