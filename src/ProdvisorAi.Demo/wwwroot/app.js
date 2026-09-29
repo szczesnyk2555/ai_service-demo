@@ -397,6 +397,7 @@
       machines,
       ops: job.result.operations.map((o) => ({ ...o })),
       notes: job.result.general_notes || '',
+      material: { grade: null, stock: null, heat_treatment: null, source: 'unknown', ...(job.result.material || {}) },
       batch: job.batchSize || 1,
       readOnly: !!job.approvedAt,
       dirty: false,
@@ -418,10 +419,20 @@
       </div>
       <div id="banner"></div>
       <div class="tiles" id="tiles"></div>
-      <div class="grid-2" style="margin-bottom:18px">
+      <div class="grid-3" style="margin-bottom:18px">
+        <div class="card material-card">
+          <div class="card-title">${t('job.material')} <span class="badge ${ed.material.source === 'drawing' ? 'ok' : ed.material.source === 'user' ? 'info' : 'warn'}">${t(`job.matSource.${ed.material.source}`)}</span></div>
+          <div class="field"><label for="m-grade">${t('job.matGrade')}</label>
+            <input type="text" id="m-grade" data-m="grade" value="${esc(ed.material.grade ?? '')}" ${dis}></div>
+          <div class="field"><label for="m-stock">${t('job.matStock')}</label>
+            <input type="text" id="m-stock" data-m="stock" value="${esc(ed.material.stock ?? '')}" ${dis}></div>
+          <div class="field" style="margin-bottom:0"><label for="m-heat">${t('job.matHeat')}</label>
+            <input type="text" id="m-heat" data-m="heat_treatment" value="${esc(ed.material.heat_treatment ?? '')}" placeholder="–" ${dis}></div>
+          ${job.material ? `<div class="small muted" style="margin-top:8px">${t('job.matUser', { v: esc(job.material) })}</div>` : ''}
+        </div>
         <div class="card">
           <div class="card-title">${t('job.notes')}</div>
-          <textarea id="notes" rows="5" ${dis}>${esc(ed.notes)}</textarea>
+          <textarea id="notes" rows="7" ${dis}>${esc(ed.notes)}</textarea>
         </div>
         <div class="card">
           <div class="card-title">${t('job.warnings')} <span id="warn-count"></span></div>
@@ -556,7 +567,7 @@
       ed.saving = true; renderSaveState();
       try {
         const job = await api('PUT', `/api/jobs/${ed.job.id}/operations`, {
-          technology: { operations: ed.ops.map(normalizeOp), general_notes: ed.notes },
+          technology: { material: ed.material, operations: ed.ops.map(normalizeOp), general_notes: ed.notes },
           batchSize: ed.batch,
         });
         ed.job = job;
@@ -595,6 +606,10 @@
       renderOps(); renderTiles(); markDirty();
     });
     $('#notes').addEventListener('input', (e) => { ed.notes = e.target.value; markDirty(); });
+    $$('[data-m]', main).forEach((inp) => inp.addEventListener('input', () => {
+      ed.material[inp.dataset.m] = inp.value.trim() === '' ? null : inp.value;
+      markDirty();
+    }));
     $('#warn-list').addEventListener('click', (e) => {
       const no = e.target.closest('li[data-op]')?.dataset.op;
       const idx = ed.ops.findIndex((o) => String(o.no) === no);

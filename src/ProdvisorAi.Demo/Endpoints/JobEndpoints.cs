@@ -200,7 +200,7 @@ public static class JobEndpoints
         {
             // Validated on every read against the CURRENT machine list (a machine may have been deactivated since).
             var machines = await db.Machines.AsNoTracking().ToListAsync();
-            warnings = TechnologyValidator.Validate(result, machines);
+            warnings = TechnologyValidator.Validate(result, machines, job.Material);
         }
 
         return new

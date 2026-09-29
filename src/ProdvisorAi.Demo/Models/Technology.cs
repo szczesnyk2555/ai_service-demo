@@ -15,7 +15,15 @@ public sealed record TechnologyOperation(
     [property: JsonPropertyName("tools")] string? Tools,
     [property: JsonPropertyName("confidence")] string Confidence);
 
+/// <summary>Material as read from the drawing (title block / notes), kept separate from the operations.</summary>
+public sealed record TechnologyMaterial(
+    [property: JsonPropertyName("grade")] string? Grade,                    // e.g. "C45 (1.0503)"
+    [property: JsonPropertyName("stock")] string? Stock,                    // e.g. "round bar Ø45 x 184 mm"
+    [property: JsonPropertyName("heat_treatment")] string? HeatTreatment,   // e.g. "hardened 45-50 HRC", null if none
+    [property: JsonPropertyName("source")] string Source);                  // "drawing" | "user" | "assumed" | "unknown"
+
 public sealed record TechnologyResult(
+    [property: JsonPropertyName("material")] TechnologyMaterial? Material,  // null for jobs created before this field existed
     [property: JsonPropertyName("operations")] List<TechnologyOperation> Operations,
     [property: JsonPropertyName("general_notes")] string GeneralNotes);
 
