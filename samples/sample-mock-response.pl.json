@@ -3,7 +3,10 @@
     "grade": "C45 (1.0503)",
     "stock": "Pręt okrągły Ø45 x 184 mm",
     "heat_treatment": null,
-    "source": "drawing"
+    "source": "drawing",
+    "stock_form": "round_bar",
+    "stock_size_mm": 45,
+    "stock_length_mm": 184
   },
   "operations": [
     {

@@ -10,9 +10,11 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <PackageReference Include="Microsoft.Data.SqlClient" Version="7.1.0" />
     <PackageReference Include="Microsoft.EntityFrameworkCore.Sqlite" Version="8.0.11" />
     <PackageReference Include="Microsoft.Extensions.Hosting.WindowsServices" Version="8.0.1" />
     <PackageReference Include="netDxf" Version="2023.11.10" />
+    <PackageReference Include="Npgsql" Version="8.0.8" />
     <PackageReference Include="SkiaSharp" Version="4.153.0" />
     <PackageReference Include="SkiaSharp.NativeAssets.Linux.NoDependencies" Version="4.153.0" />
     <PackageReference Include="System.Security.Cryptography.ProtectedData" Version="8.0.0" />
@@ -26,6 +28,9 @@
     <EmbeddedResource Include="..\..\samples\sample-mock-response.json" LogicalName="MockResponse.en.json" />
     <!-- WithCulture=false: otherwise MSBuild treats ".pl." as a culture and moves the file to a satellite assembly -->
     <EmbeddedResource Include="..\..\samples\sample-mock-response.pl.json" LogicalName="MockResponse.pl.json" WithCulture="false" />
+    <!-- PRODVISOR master data snapshot (MASZYNY*, MaterialsKind): used when no database connection is configured -->
+    <EmbeddedResource Include="..\..\samples\prodvisor-snapshot.json" LogicalName="ProdvisorSnapshot.json" />
+    <EmbeddedResource Include="..\..\samples\prodvisor-snapshot-materials.json" LogicalName="ProdvisorSnapshotMaterials.json" />
     <None Include="..\..\samples\sample-drawing-shaft.png" Link="samples\sample-drawing-shaft.png" CopyToOutputDirectory="PreserveNewest" />
     <None Include="..\..\samples\sample-drawing-shaft.dxf" Link="samples\sample-drawing-shaft.dxf" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>

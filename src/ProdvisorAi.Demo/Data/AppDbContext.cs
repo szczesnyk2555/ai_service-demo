@@ -8,10 +8,12 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
     public DbSet<PromptTemplate> Prompts => Set<PromptTemplate>();
     public DbSet<AppSetting> Settings => Set<AppSetting>();
     public DbSet<GenerationJob> Jobs => Set<GenerationJob>();
+    public DbSet<ProdvisorMaterial> Materials => Set<ProdvisorMaterial>();
 
     protected override void OnModelCreating(ModelBuilder b)
     {
         b.Entity<Machine>().HasKey(m => m.Id);
+        b.Entity<ProdvisorMaterial>(e => { e.HasKey(m => m.Id); e.Property(m => m.Id).ValueGeneratedNever(); });
         b.Entity<PromptTemplate>().HasKey(p => p.Id);
         b.Entity<AppSetting>().HasKey(s => s.Key);
         b.Entity<GenerationJob>(e =>

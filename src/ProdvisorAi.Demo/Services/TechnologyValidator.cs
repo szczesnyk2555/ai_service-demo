@@ -61,14 +61,16 @@ public static class TechnologyValidator
             else if (!machine.Active)
                 w.Add(new("machine_inactive", "error", op.No, "machine_id", Args(("machine", op.MachineId)), $"Op {op.No}: machine '{op.MachineId}' is not active."));
 
-            // Times > 0 and within sane bounds
-            if (op.SetupTimeMin <= 0)
+            // Times > 0 and within sane bounds (not for external cooperation: those are handling times, 0 is fine)
+            if (machine?.IsVirtual == true) { }
+            else if (op.SetupTimeMin <= 0)
                 w.Add(new("setup_time_invalid", "warning", op.No, "setup_time_min", null, $"Op {op.No}: setup time should be greater than 0."));
             else if (op.SetupTimeMin > MaxSetupMin)
                 w.Add(new("setup_time_high", "warning", op.No, "setup_time_min", Args(("value", op.SetupTimeMin), ("max", MaxSetupMin)),
                     $"Op {op.No}: setup time {op.SetupTimeMin} min looks unusually high (> {MaxSetupMin})."));
 
-            if (op.UnitTimeMin <= 0)
+            if (machine?.IsVirtual == true) { }
+            else if (op.UnitTimeMin <= 0)
                 w.Add(new("unit_time_invalid", "warning", op.No, "unit_time_min", null, $"Op {op.No}: unit time should be greater than 0."));
             else if (op.UnitTimeMin > MaxUnitMin)
                 w.Add(new("unit_time_high", "warning", op.No, "unit_time_min", Args(("value", op.UnitTimeMin), ("max", MaxUnitMin)),
@@ -93,6 +95,6 @@ public static class TechnologyValidator
     static bool ContainsAny(string? text, string[] keywords) =>
         text is not null && keywords.Any(k => text.Contains(k, StringComparison.OrdinalIgnoreCase));
 
-    static Dictionary<string, string> Args(params (string Key, object? Value)[] args) =>
+    internal static Dictionary<string, string> Args(params (string Key, object? Value)[] args) =>
         args.ToDictionary(a => a.Key, a => Convert.ToString(a.Value, System.Globalization.CultureInfo.InvariantCulture) ?? "");
 }

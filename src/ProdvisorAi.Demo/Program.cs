@@ -5,6 +5,7 @@ using Microsoft.Extensions.Hosting.WindowsServices;
 using ProdvisorAi.Demo.Data;
 using ProdvisorAi.Demo.Endpoints;
 using ProdvisorAi.Demo.Services;
+using ProdvisorAi.Demo.Prodvisor;
 using Serilog;
 using Serilog.Events;
 
@@ -49,6 +50,8 @@ builder.Services.AddScoped<SettingsService>();
 builder.Services.AddScoped<TechnologyGenerator>();
 builder.Services.AddSingleton<MockTechnologyProvider>();
 builder.Services.AddSingleton<DxfDrawingConverter>();
+builder.Services.AddSingleton<ProdvisorSource>();
+builder.Services.AddScoped<ProdvisorImporter>();
 builder.Services.AddSingleton<JobQueue>();
 builder.Services.AddHostedService<JobWorker>();
 
@@ -72,6 +75,22 @@ using (var scope = app.Services.CreateScope())
     db.Database.EnsureCreated();
     SchemaUpgrade.Apply(db);
     SeedData.Seed(db);
+
+    // Machines + materials come from PRODVISOR. First start (or first start after an upgrade): import them
+    // from the configured database, or from the embedded snapshot when no database is configured / reachable.
+    if (!db.Machines.Any(m => m.ProdvisorId != null) || !db.Materials.Any())
+    {
+        var source = scope.ServiceProvider.GetRequiredService<ProdvisorSource>();
+        var importer = scope.ServiceProvider.GetRequiredService<ProdvisorImporter>();
+        ProdvisorData data;
+        try { data = source.LoadAsync().GetAwaiter().GetResult(); }
+        catch (Exception ex)
+        {
+            app.Logger.LogWarning("PRODVISOR database not reachable ({Error}) - using the embedded snapshot", ex.Message);
+            data = ProdvisorSource.LoadSnapshot();
+        }
+        importer.ImportAsync(data).GetAwaiter().GetResult();
+    }
 }
 
 // ---- HTTP pipeline -------------------------------------------------------------------------

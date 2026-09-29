@@ -3,12 +3,19 @@ namespace ProdvisorAi.Demo.Data;
 /// <summary>A machine / workstation available at the customer's shop floor.</summary>
 public class Machine
 {
-    public string Id { get; set; } = "";          // e.g. "M01" - this is what the model must return in machine_id
+    public string Id { get; set; } = "";          // machine code, e.g. "0401" (NR_MASZYNY) or "K38" for cooperation - returned by the model as machine_id
     public string Name { get; set; } = "";
-    public string Type { get; set; } = "";        // e.g. "CNC lathe", "Band saw", "QC"
-    public string Description { get; set; } = ""; // capabilities: working range, axes, max diameter, ...
-    public double HourlyRate { get; set; }
-    public bool Active { get; set; } = true;
+    public string Type { get; set; } = "";        // MASZYNY_TYP.TYP_MASZYNY, e.g. "TOKARKA CNC"; "KOOPERACJA" for virtual machines
+    public string Description { get; set; } = ""; // local note about capabilities (not in PRODVISOR)
+    public double HourlyRate { get; set; }        // local (not in PRODVISOR)
+    public bool Active { get; set; } = true;      // local: offered to the model or not
+
+    // Link to PRODVISOR (dbo.MASZYNY). Filled by the importer; the local fields above are kept on re-sync.
+    public int? ProdvisorId { get; set; }         // MASZYNY.ID - used when the approved routing is sent to PRODVISOR
+    public int? TypeId { get; set; }              // MASZYNY.ID_TYP_MASZYNY
+    public int? Kind { get; set; }                // MASZYNY.ID_RODZAJ_MASZYNY
+    public bool IsVirtual { get; set; }           // MASZYNY.VirtualMachine = 1: external cooperation (heat treatment, coatings, ...)
+    public string? ParametersJson { get; set; }   // MASZYNY_PARAMETRY as [{"name","value"}], e.g. "Długość stołu roboczego" = "1200 mm"
 }
 
 /// <summary>Editable prompt text. Id is "{kind}.{language}", e.g. "system.en" or "technology.pl".</summary>
@@ -73,4 +80,13 @@ public class GenerationJob
     // Debug (request is stored WITHOUT image/PDF base64; the API key is never part of the body)
     public string? DebugRequestJson { get; set; }
     public string? DebugResponseJson { get; set; }
+}
+
+/// <summary>Material kind from PRODVISOR (dbo.MaterialsKind), cached locally for matching.</summary>
+public class ProdvisorMaterial
+{
+    public int Id { get; set; }                  // MaterialsKind.ID
+    public string Name { get; set; } = "";       // e.g. "Pręt 50 gat. C45"
+    public int? AlloyId { get; set; }
+    public bool Active { get; set; } = true;     // NoActive != 1 and not a pseudo-material (USŁUGA, ZŁOŻENIE, test rows, ...)
 }

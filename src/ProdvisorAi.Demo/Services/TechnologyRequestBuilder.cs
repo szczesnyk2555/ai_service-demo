@@ -112,8 +112,11 @@ public static class TechnologyRequestBuilder
                         ["stock"] = new JsonObject { ["type"] = new JsonArray("string", "null") },
                         ["heat_treatment"] = new JsonObject { ["type"] = new JsonArray("string", "null") },
                         ["source"] = new JsonObject { ["type"] = "string", ["enum"] = new JsonArray("drawing", "user", "assumed", "unknown") },
+                        ["stock_form"] = new JsonObject { ["type"] = "string", ["enum"] = new JsonArray("round_bar", "hex_bar", "square_bar", "flat_bar", "plate", "tube", "profile", "other") },
+                        ["stock_size_mm"] = new JsonObject { ["type"] = new JsonArray("number", "null") },
+                        ["stock_length_mm"] = new JsonObject { ["type"] = new JsonArray("number", "null") },
                     },
-                    ["required"] = new JsonArray("grade", "stock", "heat_treatment", "source"),
+                    ["required"] = new JsonArray("grade", "stock", "heat_treatment", "source", "stock_form", "stock_size_mm", "stock_length_mm"),
                     ["additionalProperties"] = false,
                 },
                 ["general_notes"] = new JsonObject { ["type"] = "string" },
@@ -125,13 +128,17 @@ public static class TechnologyRequestBuilder
 
     static string BuildUserText(string technologyPrompt, PartMetadata part, IReadOnlyList<Machine> machines, string language)
     {
+        // Parameters come from PRODVISOR (MASZYNY_PARAMETRY): working ranges, axes, spindle speed, cutting capacity...
         var machineList = machines.Select(m => new
         {
             machine_id = m.Id,
             name = m.Name,
             type = m.Type,
-            capabilities = m.Description,
-            hourly_rate = m.HourlyRate,
+            external_cooperation = m.IsVirtual ? true : (bool?)null,
+            capabilities = string.IsNullOrWhiteSpace(m.Description) ? null : m.Description,
+            parameters = m.ParametersJson is null ? null
+                : JsonSerializer.Deserialize<List<Prodvisor.MachineParameter>>(m.ParametersJson)!.Select(p => $"{p.Name}: {p.Value}").ToList(),
+            hourly_rate = m.IsVirtual ? (double?)null : m.HourlyRate,
         });
 
         static string OrUnknown(string? v) => string.IsNullOrWhiteSpace(v) ? "not provided (read from drawing if visible)" : v;
@@ -155,11 +162,17 @@ public static class TechnologyRequestBuilder
             sb.AppendLine();
         }
         sb.AppendLine("## Available machines (use ONLY these machine_id values)");
-        sb.AppendLine(JsonSerializer.Serialize(machineList, new JsonSerializerOptions { WriteIndented = true }));
+        sb.AppendLine("Machines with external_cooperation = true are external services (heat treatment, coatings, cutting...). Use them only for");
+        sb.AppendLine("work the in-house machines cannot do; for them setup_time_min / unit_time_min = internal handling time, lead time goes to the description.");
+        sb.AppendLine("Respect machine parameters (table size, travels, turning diameter/length, cutting capacity) when choosing a machine.");
+        sb.AppendLine(JsonSerializer.Serialize(machineList, new JsonSerializerOptions { WriteIndented = true, DefaultIgnoreCondition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull, Encoder = System.Text.Encodings.Web.JavaScriptEncoder.UnsafeRelaxedJsonEscaping }));
+
         sb.AppendLine();
         sb.AppendLine("Fill \"material\" separately: grade = material designation as written on the drawing (title block / notes),");
         sb.AppendLine("stock = raw material form and size you plan (e.g. round bar diameter x length), heat_treatment = as on the drawing or null.");
         sb.AppendLine("source = \"drawing\" if read from the drawing, \"user\" if only given in the part data, \"assumed\" if you had to assume it, \"unknown\" otherwise.");
+        sb.AppendLine("stock_form / stock_size_mm / stock_length_mm = the raw material you plan to use (e.g. round_bar, 45, 184): size = bar diameter,");
+        sb.AppendLine("hex across flats or plate thickness incl. machining allowance. The stock is matched against the company material list.");
         sb.AppendLine("If the material in the part data differs from the drawing, keep the drawing value and explain the conflict in general_notes.");
         sb.AppendLine("Prepare the draft production technology for the part on the attached drawing.");
         sb.AppendLine(language == "pl"

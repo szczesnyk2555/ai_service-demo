@@ -20,7 +20,12 @@ public sealed record TechnologyMaterial(
     [property: JsonPropertyName("grade")] string? Grade,                    // e.g. "C45 (1.0503)"
     [property: JsonPropertyName("stock")] string? Stock,                    // e.g. "round bar Ø45 x 184 mm"
     [property: JsonPropertyName("heat_treatment")] string? HeatTreatment,   // e.g. "hardened 45-50 HRC", null if none
-    [property: JsonPropertyName("source")] string Source);                  // "drawing" | "user" | "assumed" | "unknown"
+    [property: JsonPropertyName("source")] string Source,                   // "drawing" | "user" | "assumed" | "unknown"
+    [property: JsonPropertyName("stock_form")] string? StockForm = null,    // round_bar | hex_bar | square_bar | flat_bar | plate | tube | profile | other
+    [property: JsonPropertyName("stock_size_mm")] double? StockSizeMm = null,      // bar diameter / across flats / plate thickness
+    [property: JsonPropertyName("stock_length_mm")] double? StockLengthMm = null,  // cut length per piece
+    // Not produced by the model: the PRODVISOR material (MaterialsKind.ID) confirmed by the technologist.
+    [property: JsonPropertyName("system_material_id")] int? SystemMaterialId = null);
 
 public sealed record TechnologyResult(
     [property: JsonPropertyName("material")] TechnologyMaterial? Material,  // null for jobs created before this field existed
