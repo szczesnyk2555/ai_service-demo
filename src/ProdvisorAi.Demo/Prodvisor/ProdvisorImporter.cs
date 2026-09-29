@@ -47,6 +47,7 @@ public sealed partial class ProdvisorImporter(AppDbContext db, IConfiguration co
         var byProdvisorId = existing.Where(m => m.ProdvisorId is not null).ToDictionary(m => m.ProdvisorId!.Value);
         var byCode = existing.ToDictionary(m => m.Id, StringComparer.OrdinalIgnoreCase);
         var seenIds = new HashSet<int>();
+        var workplaceByMachine = data.Workplaces.GroupBy(w => w.MachineId).ToDictionary(g => g.Key, g => g.First());
         int added = 0, updated = 0;
 
         foreach (var row in data.Machines)
@@ -83,6 +84,18 @@ public sealed partial class ProdvisorImporter(AppDbContext db, IConfiguration co
             machine.Kind = row.Kind;
             machine.IsVirtual = row.IsVirtual;
             machine.ParametersJson = parameters.Count > 0 ? JsonSerializer.Serialize(parameters) : null;
+
+            // STANOWISKO: workplace, group, hall; the hourly cost from PRODVISOR replaces the local rate when it is set
+            if (workplaceByMachine.TryGetValue(row.Id, out var wp))
+            {
+                machine.WorkplaceId = wp.Id;
+                machine.GroupCode = string.IsNullOrWhiteSpace(wp.GroupCode) ? null : wp.GroupCode.Trim();
+                machine.Hall = wp.Hall;
+                machine.MultiOperation = wp.MultiOperation;
+                machine.Multiperson = wp.Multiperson;
+                machine.WorkplacesGroup = wp.WorkplacesGroup;
+                if (wp.HourlyCost is > 0) machine.HourlyRate = wp.HourlyCost.Value;
+            }
         }
 
         // Removed in PRODVISOR -> no longer offered to the model (kept locally for old jobs).

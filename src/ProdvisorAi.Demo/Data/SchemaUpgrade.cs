@@ -17,6 +17,12 @@ public static class SchemaUpgrade
         ("Machines", "Kind", "INTEGER NULL"),
         ("Machines", "IsVirtual", "INTEGER NOT NULL DEFAULT 0"),
         ("Machines", "ParametersJson", "TEXT NULL"),
+        ("Machines", "WorkplaceId", "INTEGER NULL"),
+        ("Machines", "GroupCode", "TEXT NULL"),
+        ("Machines", "Hall", "INTEGER NULL"),
+        ("Machines", "MultiOperation", "INTEGER NOT NULL DEFAULT 0"),
+        ("Machines", "Multiperson", "INTEGER NOT NULL DEFAULT 0"),
+        ("Machines", "WorkplacesGroup", "INTEGER NULL"),
     ];
 
     public static void Apply(AppDbContext db)

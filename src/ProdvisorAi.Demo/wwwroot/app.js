@@ -510,13 +510,31 @@
           + `${esc(m.id)} – ${esc(machineLabel(m))}${m.active ? '' : ` ${t('job.machineInactive')}`}</option>`).join('');
     };
 
+    // Machine group of an operation: chips of interchangeable machines + "add" select (same workplace group first)
+    const altsHtml = (o) => {
+      const alts = o.alternative_machine_ids || [];
+      const primary = ed.machines.find((m) => m.id === o.machine_id);
+      const chips = alts.map((a) => `<span class="chip" title="${esc((ed.machines.find((m) => m.id === a) || {}).name || '')}">${esc(a)}${ed.readOnly ? ''
+        : `<button type="button" data-act="alt-del" data-alt="${esc(a)}" title="${esc(t('job.altRemove'))}">×</button>`}</span>`).join('');
+      if (ed.readOnly) return alts.length ? `<div class="alts"><span class="alts-label">${t('job.alts')}:</span>${chips}</div>` : '';
+      const pool = ed.machines.filter((m) => m.active && m.id !== o.machine_id && !alts.includes(m.id) && !m.isVirtual);
+      const same = pool.filter((m) => primary?.groupCode && m.groupCode === primary.groupCode);
+      const other = pool.filter((m) => !same.includes(m));
+      const opt = (m) => `<option value="${esc(m.id)}">${esc(m.id)} – ${esc(machineLabel(m))}</option>`;
+      return `<div class="alts">${alts.length ? `<span class="alts-label">${t('job.alts')}:</span>` : ''}${chips}
+        <select class="alt-add"><option value="">＋ ${t('job.addAlt')}</option>
+          ${same.length ? `<optgroup label="${esc(t('job.sameGroup', { g: primary.groupCode }))}">${same.map(opt).join('')}</optgroup>` : ''}
+          <optgroup label="${esc(t('job.otherMachines'))}">${other.map(opt).join('')}</optgroup>
+        </select></div>`;
+    };
+
     const renderOps = () => {
       const last = ed.ops.length - 1;
       $('#ops-body').innerHTML = ed.ops.map((o, i) => `
         <tr data-idx="${i}">
           <td data-col="no"><input type="number" class="num" data-f="no" value="${esc(o.no)}" ${dis}></td>
           <td data-col="name"><textarea data-f="name" rows="3" ${dis}>${esc(o.name)}</textarea></td>
-          <td data-col="machine_id"><select data-f="machine_id" ${dis}>${machineOptions(o.machine_id)}</select></td>
+          <td data-col="machine_id"><select data-f="machine_id" ${dis}>${machineOptions(o.machine_id)}</select>${altsHtml(o)}</td>
           <td data-col="description"><textarea data-f="description" rows="3" ${dis}>${esc(o.description)}</textarea></td>
           <td data-col="setup_time_min"><input type="number" class="num" step="0.5" min="0" data-f="setup_time_min" value="${esc(o.setup_time_min)}" ${dis}></td>
           <td data-col="unit_time_min"><input type="number" class="num" step="0.1" min="0" data-f="unit_time_min" value="${esc(o.unit_time_min)}" ${dis}></td>
@@ -600,6 +618,7 @@
       const v = e.target.value;
       op[f] = ['no', 'setup_time_min', 'unit_time_min'].includes(f) ? (v === '' ? 0 : Number(v)) : (f === 'tools' && v.trim() === '' ? null : v);
       if (f === 'confidence') e.target.className = `conf ${v}`;
+      if (f === 'machine_id') { op.alternative_machine_ids = (op.alternative_machine_ids || []).filter((a) => a !== v); renderOps(); }
       renderTiles();
       markDirty();
     });
@@ -610,7 +629,18 @@
       if (act === 'up' && i > 0) [ed.ops[i - 1], ed.ops[i]] = [ed.ops[i], ed.ops[i - 1]];
       if (act === 'down' && i < ed.ops.length - 1) [ed.ops[i + 1], ed.ops[i]] = [ed.ops[i], ed.ops[i + 1]];
       if (act === 'del') ed.ops.splice(i, 1);
+      if (act === 'alt-del') {
+        const alt = e.target.closest('[data-alt]').dataset.alt;
+        ed.ops[i].alternative_machine_ids = (ed.ops[i].alternative_machine_ids || []).filter((a) => a !== alt);
+      }
       renderOps(); renderTiles(); markDirty();
+    });
+    // Add a machine to the operation's group (interchangeable machines)
+    body.addEventListener('change', (e) => {
+      if (!e.target.classList.contains('alt-add') || !e.target.value) return;
+      const op = ed.ops[+e.target.closest('tr').dataset.idx];
+      op.alternative_machine_ids = [...new Set([...(op.alternative_machine_ids || []), e.target.value])];
+      renderOps(); markDirty();
     });
     $('#notes').addEventListener('input', (e) => { ed.notes = e.target.value; markDirty(); });
     $$('[data-m]', main).forEach((inp) => inp.addEventListener('input', () => {
@@ -686,6 +716,7 @@
       unit_time_min: +o.unit_time_min || 0,
       tools: o.tools == null || String(o.tools).trim() === '' ? null : String(o.tools),
       confidence: ['high', 'medium', 'low'].includes(o.confidence) ? o.confidence : 'medium',
+      alternative_machine_ids: [...new Set((o.alternative_machine_ids || []).map(String))].filter((a) => a !== String(o.machine_id ?? '')),
     };
   }
 
@@ -794,7 +825,7 @@
     const rowHtml = (m, isNew) => `
       <tr data-id="${esc(m.id)}" ${isNew ? 'data-new="1"' : ''} class="${m.active ? '' : 'inactive'}">
         <td class="c-id">${isNew ? '<input type="text" data-f="id" value="" placeholder="M10">'
-          : `<b class="mono">${esc(m.id)}</b>${m.prodvisorId ? `<div class="small muted">ID ${m.prodvisorId}</div>` : ''}`}</td>
+          : `<b class="mono">${esc(m.id)}</b>${m.prodvisorId ? `<div class="small muted">ID ${m.prodvisorId}${m.workplaceId ? ` · ${t('mach.ws')} ${m.workplaceId}` : ''}</div>` : ''}${m.groupCode ? `<div class="small"><span class="badge info">${t('mach.group')} ${esc(m.groupCode)}</span>${m.hall != null && m.hall > 0 ? ` <span class="muted">${t('mach.hall')} ${m.hall}</span>` : ''}</div>` : ''}`}</td>
         <td><input type="text" data-f="name" value="${esc(m.name)}">${m.isVirtual ? `<span class="badge accent" style="margin-top:4px">${t('mach.coop')}</span>` : ''}</td>
         <td><input type="text" data-f="type" value="${esc(m.type)}" list="machine-types"></td>
         <td><textarea data-f="description" rows="2" placeholder="${esc(t('mach.descHint'))}">${esc(m.description)}</textarea>${params(m)}</td>

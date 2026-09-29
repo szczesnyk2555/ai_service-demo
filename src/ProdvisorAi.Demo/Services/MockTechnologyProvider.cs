@@ -21,7 +21,11 @@ public sealed class MockTechnologyProvider(IConfiguration config)
         // The canned answer references the seeded machines. If the customer has deactivated a machine, use another
         // active machine of the same type, or drop the operation (like the real model, which only sees active machines).
         var ops = result.Operations
-            .Select(op => op with { MachineId = MapMachine(op.MachineId, activeMachines)! })
+            .Select(op => op with
+            {
+                MachineId = MapMachine(op.MachineId, activeMachines)!,
+                AlternativeMachineIds = (op.AlternativeMachineIds ?? []).Where(a => activeMachines.Any(m => m.Id == a)).ToList(),
+            })
             .Where(op => op.MachineId is not null)
             .Select((op, i) => op with { No = i + 1 })
             .ToList();

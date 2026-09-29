@@ -16,6 +16,14 @@ public class Machine
     public int? Kind { get; set; }                // MASZYNY.ID_RODZAJ_MASZYNY
     public bool IsVirtual { get; set; }           // MASZYNY.VirtualMachine = 1: external cooperation (heat treatment, coatings, ...)
     public string? ParametersJson { get; set; }   // MASZYNY_PARAMETRY as [{"name","value"}], e.g. "Długość stołu roboczego" = "1200 mm"
+
+    // dbo.STANOWISKO (workplace of this machine)
+    public int? WorkplaceId { get; set; }         // STANOWISKO.ID - PRODVISOR routings reference workplaces
+    public string? GroupCode { get; set; }        // STANOWISKO.AuxiliaryNo - workplace group, e.g. "04" = CNC milling centres
+    public int? Hall { get; set; }                // STANOWISKO.NR_HALI
+    public bool MultiOperation { get; set; }      // STANOWISKO.MultiOperation
+    public bool Multiperson { get; set; }         // STANOWISKO.Multiperson
+    public int? WorkplacesGroup { get; set; }     // STANOWISKO.WorkplacesGroup (raw value)
 }
 
 /// <summary>Editable prompt text. Id is "{kind}.{language}", e.g. "system.en" or "technology.pl".</summary>
