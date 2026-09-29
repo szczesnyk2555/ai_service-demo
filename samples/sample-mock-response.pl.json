@@ -58,6 +58,7 @@
       "name": "Szlifowanie czopów łożyskowych",
       "machine_id": "0302",
       "alternative_machine_ids": [],
+      "group_note": "0301 – szlifierka do płaszczyzn, nie szlifuje wałków",
       "description": "W kłach: szlifować czopy Ø25h6 i Ø30k6 na wymiar, Ra 1,6.",
       "setup_time_min": 25,
       "unit_time_min": 5.0,

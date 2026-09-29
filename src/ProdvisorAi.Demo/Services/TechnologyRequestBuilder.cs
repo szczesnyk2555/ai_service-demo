@@ -99,8 +99,9 @@ public static class TechnologyRequestBuilder
                             ["tools"] = new JsonObject { ["type"] = new JsonArray("string", "null") },
                             ["confidence"] = new JsonObject { ["type"] = "string", ["enum"] = new JsonArray("high", "medium", "low") },
                             ["alternative_machine_ids"] = new JsonObject { ["type"] = "array", ["items"] = new JsonObject { ["type"] = "string", ["enum"] = ids.DeepClone() } },
+                            ["group_note"] = new JsonObject { ["type"] = "string" },
                         },
-                        ["required"] = new JsonArray("no", "name", "machine_id", "description", "setup_time_min", "unit_time_min", "tools", "confidence", "alternative_machine_ids"),
+                        ["required"] = new JsonArray("no", "name", "machine_id", "description", "setup_time_min", "unit_time_min", "tools", "confidence", "alternative_machine_ids", "group_note"),
                         ["additionalProperties"] = false,
                     },
                 },
@@ -147,7 +148,6 @@ public static class TechnologyRequestBuilder
             capabilities = string.IsNullOrWhiteSpace(m.Description) ? null : m.Description,
             parameters = m.ParametersJson is null ? null
                 : JsonSerializer.Deserialize<List<Prodvisor.MachineParameter>>(m.ParametersJson)!.Select(p => $"{p.Name}: {p.Value}").ToList(),
-            hourly_rate = m.IsVirtual ? (double?)null : m.HourlyRate,
         });
 
         static string OrUnknown(string? v) => string.IsNullOrWhiteSpace(v) ? "not provided (read from drawing if visible)" : v;
@@ -191,7 +191,10 @@ public static class TechnologyRequestBuilder
             sb.AppendLine("  none fits or the operation needs exactly this machine -> leave alternative_machine_ids empty (single machine);");
             sb.AppendLine("- the production planner then picks a free machine from machine_id + alternative_machine_ids;");
             sb.AppendLine("- machines outside the group only if they clearly fit; never repeat machine_id in alternative_machine_ids.");
-            sb.AppendLine("Mention in the operation description when a group member was excluded and why (e.g. \"0407 – za mały stół\").");
+            sb.AppendLine("- exclude a group member ONLY for technical reasons (it cannot make this part: size, travels, axes, capacity, accuracy).");
+            sb.AppendLine("  Hourly cost, utilisation or preference are NOT reasons - choosing the cheapest free machine is the planner's job;");
+            sb.AppendLine("- group_note: for every group member you left out, one short technical reason (e.g. \"0407 – stół 910 mm za krótki na detal 1000 mm\");");
+            sb.AppendLine("  empty string when the whole group is used or the machine has no group.");
         }
 
         sb.AppendLine();
@@ -219,8 +222,8 @@ public static class TechnologyRequestBuilder
 
         sb.AppendLine("Prepare the draft production technology for the part on the attached drawing.");
         sb.AppendLine(language == "pl"
-            ? "Write all text fields (name, description, tools, general_notes, material.stock, material.heat_treatment, material.system_material_reason) in Polish."
-            : "Write all text fields (name, description, tools, general_notes, material.stock, material.heat_treatment, material.system_material_reason) in English.");
+            ? "Write all text fields (name, description, tools, general_notes, material.stock, material.heat_treatment, material.system_material_reason, group_note) in Polish."
+            : "Write all text fields (name, description, tools, general_notes, material.stock, material.heat_treatment, material.system_material_reason, group_note) in English.");
         return sb.ToString();
     }
 
