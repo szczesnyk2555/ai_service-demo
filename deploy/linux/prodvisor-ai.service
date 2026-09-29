@@ -1,0 +1,26 @@
+[Unit]
+Description=PRODVISOR AI - generator technologii (demo)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=prodvisor
+Group=prodvisor
+WorkingDirectory=/opt/prodvisor-ai
+# --urls on the command line wins over "Urls" in appsettings.json. __PORT__ is replaced by install.sh.
+ExecStart=/opt/prodvisor-ai/ProdvisorAi.Demo --urls http://0.0.0.0:__PORT__
+Environment=ASPNETCORE_ENVIRONMENT=Production
+Environment=DOTNET_CLI_TELEMETRY_OPTOUT=1
+Restart=always
+RestartSec=5
+KillSignal=SIGINT
+SyslogIdentifier=prodvisor-ai
+
+# Light hardening: the app may only write to its data directory.
+NoNewPrivileges=true
+ProtectSystem=full
+ReadWritePaths=/opt/prodvisor-ai/App_Data
+
+[Install]
+WantedBy=multi-user.target
