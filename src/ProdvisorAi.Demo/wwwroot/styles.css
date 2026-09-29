@@ -284,3 +284,4 @@ table.list tr.inactive td { opacity: .5; }
 .mm-list { list-style: none; margin: 8px 0 0; padding: 0; font-size: 12.5px; display: flex; flex-direction: column; gap: 3px; }
 .material-card .row-fields { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 0 8px; }
 .machines td:nth-child(2) { min-width: 210px; } .machines td:nth-child(3) { min-width: 170px; }
+.mm-selected { margin-top: 6px; }

@@ -221,15 +221,25 @@ public static class JobEndpoints
             {
                 var materials = await db.Materials.AsNoTracking().ToListAsync();
                 var match = MaterialMatcher.Match(mat.Grade, mat.StockForm, mat.StockSizeMm, materials);
+                // The model chooses (system_material_id); the rule-based matcher is the cross-check and the source of candidates.
                 var selected = mat.SystemMaterialId is { } sid ? materials.FirstOrDefault(m => m.Id == sid) : null;
-                materialMatch = new { match.Status, match.Grade, match.GradeGroup, match.Candidates, selected };
+                var rulesBest = match.Status == "matched" ? match.Candidates[0] : null;
+                materialMatch = new
+                {
+                    match.Status, match.Grade, match.GradeGroup, match.Candidates, selected,
+                    by = mat.SystemMaterialBy, reason = mat.SystemMaterialReason,
+                };
 
                 if (selected is null && match.Status == "not_found")
                     warnings.Add(new("material_not_in_system", "warning", null, "material", TechnologyValidator.Args(("grade", mat.Grade ?? "")),
                         $"Material {mat.Grade} is not in the PRODVISOR material list."));
-                else if (selected is null && match.Status == "grade_only")
-                    warnings.Add(new("material_stock_not_in_system", "info", null, "material", TechnologyValidator.Args(("grade", mat.Grade ?? "")),
-                        $"Grade {mat.Grade} exists in PRODVISOR, but not in the required form/size."));
+                else if (selected is null)
+                    warnings.Add(new("material_not_selected", "warning", null, "material", TechnologyValidator.Args(("grade", mat.Grade ?? "")),
+                        $"No PRODVISOR material selected for {mat.Grade} - candidates exist, please choose."));
+                else if (rulesBest is not null && rulesBest.Id != selected.Id && mat.SystemMaterialBy == "ai")
+                    warnings.Add(new("material_ai_differs", "info", null, "material",
+                        TechnologyValidator.Args(("ai", selected.Name), ("rules", rulesBest.Name)),
+                        $"AI chose {selected.Name}; rule-based matching suggests {rulesBest.Name}."));
             }
         }
 

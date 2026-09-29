@@ -398,7 +398,7 @@
       machines,
       ops: job.result.operations.map((o) => ({ ...o })),
       notes: job.result.general_notes || '',
-      material: { grade: null, stock: null, heat_treatment: null, source: 'unknown', stock_form: null, stock_size_mm: null, stock_length_mm: null, system_material_id: null, ...(job.result.material || {}) },
+      material: { grade: null, stock: null, heat_treatment: null, source: 'unknown', stock_form: null, stock_size_mm: null, stock_length_mm: null, system_material_id: null, system_material_reason: null, system_material_by: null, ...(job.result.material || {}) },
       batch: job.batchSize || 1,
       readOnly: !!job.approvedAt,
       dirty: false,
@@ -406,8 +406,6 @@
       version: 0,
       timer: null,
     };
-    // Best PRODVISOR material is pre-selected when the match is unambiguous (saved with the next edit / on approve).
-    if (!ed.material.system_material_id && job.materialMatch?.status === 'matched') ed.material.system_material_id = job.materialMatch.candidates[0].id;
     const dis = ed.readOnly ? 'disabled' : '';
 
     main.innerHTML = `
@@ -619,17 +617,20 @@
       const v = inp.value.trim();
       ed.material[inp.dataset.m] = v === '' ? null : inp.type === 'number' ? Number(v) : inp.value;
       // Grade / form / size changed -> the confirmed PRODVISOR material no longer applies; server re-matches on save.
-      if (['grade', 'stock_form', 'stock_size_mm'].includes(inp.dataset.m)) ed.material.system_material_id = null;
+      if (['grade', 'stock_form', 'stock_size_mm'].includes(inp.dataset.m)) { ed.material.system_material_id = null; ed.material.system_material_by = null; ed.material.system_material_reason = null; }
       markDirty();
     }));
     // Material from the PRODVISOR list chosen by the technologist
     const renderMaterialMatch = () => {
-      $('#mm-box').innerHTML = materialMatchHtml(ed.job.materialMatch, ed.material.system_material_id ?? ed.job.materialMatch?.selected?.id, ed.readOnly);
+      $('#mm-box').innerHTML = materialMatchHtml(ed.job.materialMatch, ed.material.system_material_id, ed.readOnly,
+        { by: ed.material.system_material_by, reason: ed.material.system_material_reason });
       const sel = $('#m-system');
       if (!sel) return;
       sel.disabled = ed.readOnly;
       sel.addEventListener('change', () => {
         ed.material.system_material_id = sel.value ? Number(sel.value) : null;
+        ed.material.system_material_by = 'user';   // the technologist overrides the AI choice
+        renderMaterialMatch();
         markDirty();
       });
     };
@@ -944,27 +945,36 @@
   }
 
   /** Result of matching the drawing material against the PRODVISOR material list. */
-  function materialMatchHtml(match, selectedId, readOnly) {
+  function materialMatchHtml(match, selectedId, readOnly, ai) {
     if (!match) return '';
-    const status = {
-      matched: `<span class="badge ok">✓ ${t('mm.matched')}</span>`,
-      grade_only: `<span class="badge warn">${t('mm.gradeOnly')}</span>`,
-      not_found: `<span class="badge err">✕ ${t('mm.notFound')}</span>`,
-      no_grade: `<span class="badge">${t('mm.noGrade')}</span>`,
-    }[match.status] || '';
     const cands = match.candidates || [];
-    const current = selectedId ?? (match.status === 'matched' ? cands[0]?.id : null);
+    const selected = selectedId != null
+      ? (cands.find((c) => c.id === selectedId) || (match.selected?.id === selectedId ? match.selected : null) || { id: selectedId, name: `ID ${selectedId}` })
+      : null;
+    const by = ai?.by;
+    const status = selected
+      ? `<span class="badge ok">✓ ${by === 'user' ? t('mm.byUser') : by === 'ai' ? t('mm.byAi') : t('mm.matched')}</span>`
+      : {
+        matched: `<span class="badge warn">${t('mm.choose')}</span>`,
+        grade_only: `<span class="badge warn">${t('mm.gradeOnly')}</span>`,
+        not_found: `<span class="badge err">✕ ${t('mm.notFound')}</span>`,
+        no_grade: `<span class="badge">${t('mm.noGrade')}</span>`,
+      }[match.status] || '';
+    // Options: the chosen item (even if the rules did not propose it) + rule-based candidates
+    const options = [...(selected && !cands.some((c) => c.id === selected.id) ? [selected] : []), ...cands];
     return `
       <div class="mm">
         <div class="mm-head"><span class="label">${t('mm.title')}</span> ${status}</div>
-        ${match.gradeGroup ? `<div class="small muted">${t('mm.family')}: ${esc(match.gradeGroup)}</div>` : ''}
-        ${match.status === 'not_found' ? `<div class="alert err" style="margin-top:8px">${t('mm.notFoundText', { grade: esc(match.grade || '') })}</div>` : ''}
-        ${cands.length ? `
-          <select id="m-system" ${readOnly === true ? '' : ''} style="margin-top:8px">
-            <option value="">${t('mm.choose')}</option>
-            ${cands.map((c) => `<option value="${c.id}" ${c.id === current ? 'selected' : ''}>${esc(c.name)} (ID ${c.id})</option>`).join('')}
-          </select>
-          <ul class="mm-list">${cands.map((c) => `<li><b>${esc(c.name)}</b> <span class="muted">– ${esc(c.reason)}</span></li>`).join('')}</ul>` : ''}
+        ${selected ? `<div class="mm-selected"><b>${esc(selected.name)}</b> <span class="muted">(ID ${selected.id})</span></div>` : ''}
+        ${ai?.reason ? `<div class="small" style="margin-top:4px"><span class="badge info">AI</span> ${esc(ai.reason)}</div>` : ''}
+        ${!selected && match.status === 'not_found' ? `<div class="alert err" style="margin-top:8px">${t('mm.notFoundText', { grade: esc(match.grade || '') })}</div>` : ''}
+        ${options.length ? `
+          <select id="m-system" style="margin-top:8px">
+            <option value="">${t('mm.chooseOption')}</option>
+            ${options.map((c) => `<option value="${c.id}" ${selected && c.id === selected.id ? 'selected' : ''}>${esc(c.name)} (ID ${c.id})</option>`).join('')}
+          </select>` : ''}
+        ${cands.length ? `<details style="margin-top:6px"><summary class="small muted" style="cursor:pointer">${t('mm.rules', { n: cands.length })}${match.gradeGroup ? ` · ${esc(match.gradeGroup)}` : ''}</summary>
+          <ul class="mm-list">${cands.map((c) => `<li><b>${esc(c.name)}</b> <span class="muted">– ${esc(c.reason)}</span></li>`).join('')}</ul></details>` : ''}
       </div>`;
   }
 

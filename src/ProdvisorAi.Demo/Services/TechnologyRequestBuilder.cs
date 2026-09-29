@@ -23,7 +23,7 @@ public static class TechnologyRequestBuilder
 
     public static JsonObject Build(
         string model, string systemPrompt, string technologyPrompt, PartMetadata part,
-        IReadOnlyList<Machine> activeMachines, DrawingInput drawing, string language,
+        IReadOnlyList<Machine> activeMachines, IReadOnlyList<ProdvisorMaterial> materials, DrawingInput drawing, string language,
         int maxOutputTokens, string? reasoningEffort)
     {
         var body = new JsonObject
@@ -41,7 +41,7 @@ public static class TechnologyRequestBuilder
                     ["role"] = "user",
                     ["content"] = new JsonArray
                     {
-                        new JsonObject { ["type"] = "input_text", ["text"] = BuildUserText(technologyPrompt, part, activeMachines, language) },
+                        new JsonObject { ["type"] = "input_text", ["text"] = BuildUserText(technologyPrompt, part, activeMachines, materials, language) },
                         BuildDrawingPart(drawing),
                     },
                 },
@@ -115,8 +115,11 @@ public static class TechnologyRequestBuilder
                         ["stock_form"] = new JsonObject { ["type"] = "string", ["enum"] = new JsonArray("round_bar", "hex_bar", "square_bar", "flat_bar", "plate", "tube", "profile", "other") },
                         ["stock_size_mm"] = new JsonObject { ["type"] = new JsonArray("number", "null") },
                         ["stock_length_mm"] = new JsonObject { ["type"] = new JsonArray("number", "null") },
+                        ["system_material_id"] = new JsonObject { ["type"] = new JsonArray("integer", "null") },
+                        ["system_material_reason"] = new JsonObject { ["type"] = "string" },
                     },
-                    ["required"] = new JsonArray("grade", "stock", "heat_treatment", "source", "stock_form", "stock_size_mm", "stock_length_mm"),
+                    ["required"] = new JsonArray("grade", "stock", "heat_treatment", "source", "stock_form", "stock_size_mm", "stock_length_mm",
+                        "system_material_id", "system_material_reason"),
                     ["additionalProperties"] = false,
                 },
                 ["general_notes"] = new JsonObject { ["type"] = "string" },
@@ -126,7 +129,8 @@ public static class TechnologyRequestBuilder
         };
     }
 
-    static string BuildUserText(string technologyPrompt, PartMetadata part, IReadOnlyList<Machine> machines, string language)
+    static string BuildUserText(string technologyPrompt, PartMetadata part, IReadOnlyList<Machine> machines,
+        IReadOnlyList<ProdvisorMaterial> materials, string language)
     {
         // Parameters come from PRODVISOR (MASZYNY_PARAMETRY): working ranges, axes, spindle speed, cutting capacity...
         var machineList = machines.Select(m => new
@@ -174,10 +178,26 @@ public static class TechnologyRequestBuilder
         sb.AppendLine("stock_form / stock_size_mm / stock_length_mm = the raw material you plan to use (e.g. round_bar, 45, 184): size = bar diameter,");
         sb.AppendLine("hex across flats or plate thickness incl. machining allowance. The stock is matched against the company material list.");
         sb.AppendLine("If the material in the part data differs from the drawing, keep the drawing value and explain the conflict in general_notes.");
+        sb.AppendLine();
+
+        // The company material list: the model picks the stock item (names in the ERP differ from drawing designations).
+        sb.AppendLine("## Company material list (PRODVISOR, format: ID | name)");
+        sb.AppendLine("Choose material.system_material_id from this list for the stock you plan:");
+        sb.AppendLine("- Match the GRADE, also through equivalent designations (EN / PN / DIN W.Nr / AISI / trade names, e.g. C45 = 1.0503 = \"STAL 45\",");
+        sb.AppendLine("  42CrMo4 = 40HM = 40HMT, S355J2 = 18G2A, S235JR = St3S, 1.2379 = NC11LV = D2, EN AW-2017 = PA6, 1.4301 = 304), ignoring typos and formatting.");
+        sb.AppendLine("- Then the FORM (pręt = round bar, sześciokąt = hex, blacha = plate, płaskownik = flat bar, profil/rura...) and SIZE:");
+        sb.AppendLine("  the item must be at least your stock_size_mm; prefer the smallest sufficient one. A generic item without size (e.g. \"Stal 1,2311\") is acceptable if no sized item fits.");
+        sb.AppendLine("- Avoid customer-supplied / test items (\"materiał klienta\", \"powierzony\", \"test\") unless the drawing says the material is supplied by the customer.");
+        sb.AppendLine("- If nothing in the list is the right grade: system_material_id = null and say in system_material_reason that the material is not in the system.");
+        sb.AppendLine("- system_material_reason: one short sentence (why this item, e.g. \"C45 = 1.0503, pręt Ø50 ≥ Ø45\", or why none).");
+        foreach (var m in materials.Where(m => m.Active).OrderBy(m => m.Name))
+            sb.Append(m.Id).Append(" | ").AppendLine(m.Name);
+        sb.AppendLine();
+
         sb.AppendLine("Prepare the draft production technology for the part on the attached drawing.");
         sb.AppendLine(language == "pl"
-            ? "Write all text fields (name, description, tools, general_notes, material.stock, material.heat_treatment) in Polish."
-            : "Write all text fields (name, description, tools, general_notes, material.stock, material.heat_treatment) in English.");
+            ? "Write all text fields (name, description, tools, general_notes, material.stock, material.heat_treatment, material.system_material_reason) in Polish."
+            : "Write all text fields (name, description, tools, general_notes, material.stock, material.heat_treatment, material.system_material_reason) in English.");
         return sb.ToString();
     }
 

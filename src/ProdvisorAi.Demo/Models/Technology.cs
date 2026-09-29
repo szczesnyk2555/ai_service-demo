@@ -24,8 +24,12 @@ public sealed record TechnologyMaterial(
     [property: JsonPropertyName("stock_form")] string? StockForm = null,    // round_bar | hex_bar | square_bar | flat_bar | plate | tube | profile | other
     [property: JsonPropertyName("stock_size_mm")] double? StockSizeMm = null,      // bar diameter / across flats / plate thickness
     [property: JsonPropertyName("stock_length_mm")] double? StockLengthMm = null,  // cut length per piece
-    // Not produced by the model: the PRODVISOR material (MaterialsKind.ID) confirmed by the technologist.
-    [property: JsonPropertyName("system_material_id")] int? SystemMaterialId = null);
+    // PRODVISOR material (MaterialsKind.ID): proposed by the model from the company material list, validated by the
+    // server and confirmable / changeable by the technologist. null = not in the system.
+    [property: JsonPropertyName("system_material_id")] int? SystemMaterialId = null,
+    [property: JsonPropertyName("system_material_reason")] string? SystemMaterialReason = null,  // why this item (or why none)
+    // Not produced by the model: who chose system_material_id - "ai" | "user"
+    [property: JsonPropertyName("system_material_by")] string? SystemMaterialBy = null);
 
 public sealed record TechnologyResult(
     [property: JsonPropertyName("material")] TechnologyMaterial? Material,  // null for jobs created before this field existed
