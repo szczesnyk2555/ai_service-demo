@@ -61,6 +61,15 @@ public static class TechnologyValidator
             else if (!machine.Active)
                 w.Add(new("machine_inactive", "error", op.No, "machine_id", Args(("machine", op.MachineId)), $"Op {op.No}: machine '{op.MachineId}' is not active."));
 
+            // Machine group (alternatives): must exist and be active, must not repeat machine_id
+            foreach (var alt in op.AlternativeMachineIds ?? [])
+            {
+                if (string.Equals(alt, op.MachineId, StringComparison.OrdinalIgnoreCase))
+                    w.Add(new("alternative_duplicate", "info", op.No, "machine_id", Args(("machine", alt)), $"Op {op.No}: {alt} is both the machine and an alternative."));
+                else if (!machines.TryGetValue(alt, out var am) || !am.Active)
+                    w.Add(new("alternative_inactive", "warning", op.No, "machine_id", Args(("machine", alt)), $"Op {op.No}: alternative machine {alt} does not exist or is inactive."));
+            }
+
             // Times > 0 and within sane bounds (not for external cooperation: those are handling times, 0 is fine)
             if (machine?.IsVirtual == true) { }
             else if (op.SetupTimeMin <= 0)

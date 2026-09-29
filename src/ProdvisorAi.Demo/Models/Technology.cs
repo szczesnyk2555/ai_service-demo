@@ -13,7 +13,9 @@ public sealed record TechnologyOperation(
     [property: JsonPropertyName("setup_time_min")] double SetupTimeMin,
     [property: JsonPropertyName("unit_time_min")] double UnitTimeMin,
     [property: JsonPropertyName("tools")] string? Tools,
-    [property: JsonPropertyName("confidence")] string Confidence);
+    [property: JsonPropertyName("confidence")] string Confidence,
+    // Machine GROUP: other machines that can do the same operation interchangeably (planner picks one). Empty = only machine_id.
+    [property: JsonPropertyName("alternative_machine_ids")] List<string>? AlternativeMachineIds = null);
 
 /// <summary>Material as read from the drawing (title block / notes), kept separate from the operations.</summary>
 public sealed record TechnologyMaterial(

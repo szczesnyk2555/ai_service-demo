@@ -98,8 +98,9 @@ public static class TechnologyRequestBuilder
                             ["unit_time_min"] = new JsonObject { ["type"] = "number" },
                             ["tools"] = new JsonObject { ["type"] = new JsonArray("string", "null") },
                             ["confidence"] = new JsonObject { ["type"] = "string", ["enum"] = new JsonArray("high", "medium", "low") },
+                            ["alternative_machine_ids"] = new JsonObject { ["type"] = "array", ["items"] = new JsonObject { ["type"] = "string", ["enum"] = ids.DeepClone() } },
                         },
-                        ["required"] = new JsonArray("no", "name", "machine_id", "description", "setup_time_min", "unit_time_min", "tools", "confidence"),
+                        ["required"] = new JsonArray("no", "name", "machine_id", "description", "setup_time_min", "unit_time_min", "tools", "confidence", "alternative_machine_ids"),
                         ["additionalProperties"] = false,
                     },
                 },
@@ -139,6 +140,10 @@ public static class TechnologyRequestBuilder
             name = m.Name,
             type = m.Type,
             external_cooperation = m.IsVirtual ? true : (bool?)null,
+            workplace_id = m.WorkplaceId,
+            workplace_group = m.GroupCode,
+            hall = m.Hall,
+            multi_operation = m.MultiOperation ? true : (bool?)null,
             capabilities = string.IsNullOrWhiteSpace(m.Description) ? null : m.Description,
             parameters = m.ParametersJson is null ? null
                 : JsonSerializer.Deserialize<List<Prodvisor.MachineParameter>>(m.ParametersJson)!.Select(p => $"{p.Name}: {p.Value}").ToList(),
@@ -169,6 +174,11 @@ public static class TechnologyRequestBuilder
         sb.AppendLine("Machines with external_cooperation = true are external services (heat treatment, coatings, cutting...). Use them only for");
         sb.AppendLine("work the in-house machines cannot do; for them setup_time_min / unit_time_min = internal handling time, lead time goes to the description.");
         sb.AppendLine("Respect machine parameters (table size, travels, turning diameter/length, cutting capacity) when choosing a machine.");
+        sb.AppendLine("Machine GROUPS (from PRODVISOR workplaces, table STANOWISKO): machines with the same workplace_group are workplaces of the same kind");
+        sb.AppendLine("(e.g. group \"04\" = all CNC milling centres). You may combine machines into a group for an operation: put the best machine in");
+        sb.AppendLine("machine_id and the other machines that can do the SAME operation with the same program / set-up in alternative_machine_ids");
+        sb.AppendLine("(the planner then chooses the free one). Use the group code, type and parameters to decide - only add machines that really fit");
+        sb.AppendLine("(size, axes, capacity); an empty list means the operation is bound to machine_id. Never repeat machine_id in the list.");
         sb.AppendLine(JsonSerializer.Serialize(machineList, new JsonSerializerOptions { WriteIndented = true, DefaultIgnoreCondition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull, Encoder = System.Text.Encodings.Web.JavaScriptEncoder.UnsafeRelaxedJsonEscaping }));
 
         sb.AppendLine();

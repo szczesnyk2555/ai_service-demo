@@ -12,12 +12,18 @@ public sealed record ParameterKindRow(int Id, string Name, int ValueType, int? U
 public sealed record ParameterRow(int MachineId, int KindId, double? Value, string? Text);                       // dbo.MASZYNY_PARAMETRY
 public sealed record MaterialRow(int Id, string Name, int? AlloyId, bool NoActive);                              // dbo.MaterialsKind
 
+/// <summary>dbo.STANOWISKO - the workplace a machine belongs to. AuxiliaryNo is the workplace GROUP code
+/// (e.g. "04" = all CNC milling centres 0401-0407), which lets machines be combined into groups.</summary>
+public sealed record WorkplaceRow(int Id, string? Number, int MachineId, double? HourlyCost, int? Hall,
+    bool MultiOperation, bool IsVirtual, string? GroupCode, bool Multiperson, int? WorkplacesGroup);
+
 public sealed record ProdvisorData(
     IReadOnlyDictionary<int, string> MachineTypes,              // dbo.MASZYNY_TYP: ID -> TYP_MASZYNY
     IReadOnlyList<MachineRow> Machines,
     IReadOnlyDictionary<int, ParameterKindRow> ParameterKinds,
     IReadOnlyList<ParameterRow> Parameters,
     IReadOnlyList<MaterialRow> Materials,
+    IReadOnlyList<WorkplaceRow> Workplaces,
     string SourceDescription);
 
 /// <summary>
@@ -62,6 +68,11 @@ public sealed class ProdvisorSource(IConfiguration config, ILogger<ProdvisorSour
             materialsDoc.RootElement.GetProperty("materials_kind").EnumerateArray()
                 .Select(r => new MaterialRow(r[0].GetInt32(), r[1].GetString()!.Trim(), IntOrNull(r[2]), IntOrNull(r[3]) == 1))
                 .ToList(),
+            m.TryGetProperty("stanowisko", out var ws)
+                ? ws.EnumerateArray().Select(r => new WorkplaceRow(
+                    r[0].GetInt32(), StrOrNull(r[1])?.Trim(), r[2].GetInt32(), r[3].ValueKind == JsonValueKind.Number ? r[3].GetDouble() : null,
+                    IntOrNull(r[4]), IntOrNull(r[5]) == 1, IntOrNull(r[6]) == 1, StrOrNull(r[7])?.Trim(), IntOrNull(r[8]) == 1, IntOrNull(r[9]))).ToList()
+                : [],
             "snapshot (embedded)");
     }
 
@@ -108,9 +119,14 @@ public sealed class ProdvisorSource(IConfiguration config, ILogger<ProdvisorSour
         var materials = await Query(
             $"SELECT {C("ID")}, {C("Name")}, {C("AlloyID")}, {C("NoActive")} FROM {T("MaterialsKind")}",
             r => new MaterialRow(Int(r, 0)!.Value, Str(r, 1) ?? "", Int(r, 2), Int(r, 3) == 1));
+        var workplaces = await Query(
+            $"SELECT {C("ID")}, {C("NR_STANOWISKA")}, {C("ID_MASZYNY")}, {C("KOSZT_ROBOCZOGODZINY")}, {C("NR_HALI")}, {C("MultiOperation")}, " +
+            $"{C("VirtualWorkplace")}, {C("AuxiliaryNo")}, {C("Multiperson")}, {C("WorkplacesGroup")} FROM {T("STANOWISKO")} WHERE {C("ID_MASZYNY")} IS NOT NULL",
+            r => new WorkplaceRow(Int(r, 0)!.Value, Str(r, 1), Int(r, 2)!.Value, Dbl(r, 3), Int(r, 4), Int(r, 5) == 1, Int(r, 6) == 1,
+                Str(r, 7), Int(r, 8) == 1, Int(r, 9)));
 
         return new ProdvisorData(
-            types.ToDictionary(t => t.Id, t => t.Name), machines, kinds.ToDictionary(k => k.Id), parameters, materials,
+            types.ToDictionary(t => t.Id, t => t.Name), machines, kinds.ToDictionary(k => k.Id), parameters, materials, workplaces,
             $"{Provider} database");
     }
 

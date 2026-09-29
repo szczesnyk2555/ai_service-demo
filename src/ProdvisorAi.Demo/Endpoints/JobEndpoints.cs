@@ -155,6 +155,14 @@ public static class JobEndpoints
                     {
                         o.No, o.Name, machine_code = o.MachineId,
                         maszyny_id = machines.TryGetValue(o.MachineId, out var m) ? m.ProdvisorId : null,
+                        stanowisko_id = machines.TryGetValue(o.MachineId, out var w) ? w.WorkplaceId : null,
+                        // machine group: interchangeable machines / workplaces for this operation
+                        alternatives = (o.AlternativeMachineIds ?? []).Select(a => new
+                        {
+                            machine_code = a,
+                            maszyny_id = machines.TryGetValue(a, out var am) ? am.ProdvisorId : null,
+                            stanowisko_id = machines.TryGetValue(a, out var aw) ? aw.WorkplaceId : null,
+                        }),
                         cooperation = machines.TryGetValue(o.MachineId, out var m2) && m2.IsVirtual,
                         tpz_min = o.SetupTimeMin, tj_min = o.UnitTimeMin,
                     }),
