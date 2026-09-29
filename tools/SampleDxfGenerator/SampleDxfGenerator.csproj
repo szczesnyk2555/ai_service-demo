@@ -1,0 +1,16 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- Generates samples/sample-drawing-shaft.dxf: the same shaft as the PNG sample, as a real CAD file
+       (polylines, centre lines, DIMENSION entities, texts). Run: dotnet run, project tools/SampleDxfGenerator -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net8.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="netDxf" Version="2023.11.10" />
+  </ItemGroup>
+
+</Project>

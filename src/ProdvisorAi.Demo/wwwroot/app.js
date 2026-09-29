@@ -184,9 +184,9 @@
           <svg viewBox="0 0 24 24"><path d="M12 16V4M7 9l5-5 5 5"/><path d="M4 15v4a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-4"/></svg>
           <div class="big">${t('gen.drop')}</div>
           <div class="muted small">${t('gen.dropHint', { mb: state.info.maxUploadMb })}</div>
-          <input type="file" id="file-input" accept=".png,.jpg,.jpeg,.pdf,image/png,image/jpeg,application/pdf" hidden>
+          <input type="file" id="file-input" accept=".png,.jpg,.jpeg,.pdf,.dxf,image/png,image/jpeg,application/pdf" hidden>
         </div>
-        <div style="margin-top:10px"><button class="btn link" id="sample-btn">⤓ ${t('gen.useSample')}</button></div>`;
+        <div class="btn-row" style="margin-top:10px; gap:18px"><button class="btn link" id="sample-btn">⤓ ${t('gen.useSample')}</button><button class="btn link" id="sample-dxf-btn">⤓ ${t('gen.useSampleDxf')}</button></div>`;
 
       const dz = $('#dropzone');
       const input = $('#file-input');
@@ -196,40 +196,64 @@
       dz.addEventListener('dragleave', () => dz.classList.remove('drag'));
       dz.addEventListener('drop', (e) => { e.preventDefault(); dz.classList.remove('drag'); if (e.dataTransfer.files[0]) setFile(e.dataTransfer.files[0]); });
       input.addEventListener('change', () => { if (input.files[0]) setFile(input.files[0]); });
-      $('#sample-btn').addEventListener('click', loadSample);
+      $('#sample-btn').addEventListener('click', () => loadSample('drawing'));
+      $('#sample-dxf-btn').addEventListener('click', () => loadSample('dxf'));
       return;
     }
 
     const isPdf = u.file.type === 'application/pdf' || /\.pdf$/i.test(u.file.name);
+    // DXF cannot be shown by the browser: show the PNG rendered by the server (/api/drawings/preview).
+    const media = u.isDxf
+      ? (u.dxf ? `<img src="${u.dxf.image}" alt="DXF preview">` : `<div class="empty">${t('gen.dxfRendering')}</div>`)
+      : isPdf ? `<iframe src="${u.url}" title="PDF preview"></iframe>` : `<img src="${u.url}" alt="Drawing preview">`;
     el.innerHTML = `
       <div class="preview">
-        ${isPdf ? `<iframe src="${u.url}" title="PDF preview"></iframe>` : `<img src="${u.url}" alt="Drawing preview">`}
+        ${media}
         <div class="preview-bar">
           <span><b>${esc(u.file.name)}</b> <span class="muted">· ${fileSize(u.file.size)}</span></span>
           <button class="btn sm" id="remove-file">✕ ${t('gen.remove')}</button>
         </div>
-      </div>`;
+      </div>
+      ${u.dxf ? `<div class="alert info" style="margin-top:10px">ⓘ ${t('gen.dxfInfo', { dims: u.dxf.dimensionCount, texts: u.dxf.textCount })}</div>` : ''}`;
     $('#remove-file').addEventListener('click', () => { URL.revokeObjectURL(u.url); state.upload = null; renderDropArea(); });
   }
 
   function setFile(file) {
     const errEl = $('#gen-error');
     if (errEl) errEl.innerHTML = '';
-    if (!/\.(png|jpe?g|pdf)$/i.test(file.name) && !/^(image\/(png|jpeg)|application\/pdf)$/.test(file.type)) {
+    if (!/\.(png|jpe?g|pdf|dxf)$/i.test(file.name) && !/^(image\/(png|jpeg)|application\/pdf)$/.test(file.type)) {
       errEl.innerHTML = `<div class="alert err">${t('gen.badType')}</div>`; return;
     }
     if (file.size > state.info.maxUploadMb * 1048576) {
       errEl.innerHTML = `<div class="alert err">${t('gen.tooLarge', { mb: state.info.maxUploadMb })}</div>`; return;
     }
     if (state.upload) URL.revokeObjectURL(state.upload.url);
-    state.upload = { file, url: URL.createObjectURL(file) };
+    const upload = { file, url: URL.createObjectURL(file), isDxf: /\.dxf$/i.test(file.name), dxf: null };
+    state.upload = upload;
     renderDropArea();
+    if (upload.isDxf) previewDxf(upload);
   }
 
-  async function loadSample() {
-    const res = await fetch('/api/samples/drawing');
+  async function previewDxf(upload) {
+    const fd = new FormData();
+    fd.append('drawing', upload.file, upload.file.name);
+    try {
+      upload.dxf = await api('POST', '/api/drawings/preview', fd);
+      if (state.upload === upload) renderDropArea();
+    } catch (e) {
+      if (state.upload !== upload) return;
+      state.upload = null;
+      renderDropArea();
+      const errEl = $('#gen-error');
+      if (errEl) errEl.innerHTML = errorBox(e);
+    }
+  }
+
+  async function loadSample(kind = 'drawing') {
+    const res = await fetch(`/api/samples/${kind}`);
     if (!res.ok) { toast('Sample drawing not found', 'err'); return; }
-    setFile(new File([await res.blob()], 'sample-drawing-shaft.png', { type: 'image/png' }));
+    const name = kind === 'dxf' ? 'sample-drawing-shaft.dxf' : 'sample-drawing-shaft.png';
+    setFile(new File([await res.blob()], name, { type: kind === 'dxf' ? 'application/dxf' : 'image/png' }));
     // Pre-fill the part data that matches the sample drawing (only empty fields).
     const f = state.form;
     if (!f.partNumber) { f.partNumber = 'PV-1001-A'; $('#f-part').value = f.partNumber; }
@@ -293,6 +317,9 @@
         <dt>${t('job.meta.file')}</dt><dd>${esc(job.drawingFileName)}</dd>
         <dt>${t('job.meta.created')}</dt><dd>${date(job.createdAt)}</dd>
       </dl>
+      ${job.sourceUrl ? `<div class="small" style="margin-top:10px"><span class="badge info">DXF</span> <a href="${job.sourceUrl}">⤓ ${t('job.sourceDxf')}</a></div>` : ''}
+      ${job.drawingText ? `<details style="margin-top:8px"><summary class="small" style="cursor:pointer;font-weight:600">${t('job.dxfData')}</summary>
+        <pre class="json" style="max-height:320px">${esc(job.drawingText)}</pre></details>` : ''}
       ${job.regeneratedFromId ? `<div class="small muted" style="margin-top:8px">↻ <a href="#/job/${job.regeneratedFromId}">${t('job.regeneratedFrom')}</a></div>` : ''}`;
   }
 

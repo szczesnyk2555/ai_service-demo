@@ -38,7 +38,7 @@ public sealed class TechnologyGenerator(
 
         var request = TechnologyRequestBuilder.Build(
             settings.Model, systemPrompt, technologyPrompt,
-            new PartMetadata(job.PartNumber, job.Material, job.BatchSize, job.DrawingFileName),
+            new PartMetadata(job.PartNumber, job.Material, job.BatchSize, job.DrawingFileName, job.DrawingText),
             machines, drawing, lang,
             maxOutputTokens: config.GetValue("OpenAI:MaxOutputTokens", 16000),
             reasoningEffort: config["OpenAI:ReasoningEffort"]);

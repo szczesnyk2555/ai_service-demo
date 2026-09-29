@@ -5,7 +5,8 @@ using ProdvisorAi.Demo.Data;
 
 namespace ProdvisorAi.Demo.Services;
 
-public sealed record PartMetadata(string? PartNumber, string? Material, int? BatchSize, string DrawingFileName);
+/// <param name="DrawingText">Exact dimensions and texts extracted from a DXF (null for images / PDFs).</param>
+public sealed record PartMetadata(string? PartNumber, string? Material, int? BatchSize, string DrawingFileName, string? DrawingText = null);
 
 public sealed record DrawingInput(byte[] Bytes, string ContentType, string FileName);
 
@@ -132,6 +133,14 @@ public static class TechnologyRequestBuilder
         sb.AppendLine($"- Batch size: {(part.BatchSize is > 0 ? $"{part.BatchSize} pcs" : "not provided")}");
         sb.AppendLine($"- Drawing file: {part.DrawingFileName}");
         sb.AppendLine();
+        if (!string.IsNullOrWhiteSpace(part.DrawingText))
+        {
+            sb.AppendLine("## Data extracted from the DXF file");
+            sb.AppendLine("The attached image was rendered from a DXF CAD file. The values below were read directly from the file and are EXACT -");
+            sb.AppendLine("prefer them over reading numbers from the image. Use the image for geometry and context.");
+            sb.AppendLine(part.DrawingText.Trim());
+            sb.AppendLine();
+        }
         sb.AppendLine("## Available machines (use ONLY these machine_id values)");
         sb.AppendLine(JsonSerializer.Serialize(machineList, new JsonSerializerOptions { WriteIndented = true }));
         sb.AppendLine();
