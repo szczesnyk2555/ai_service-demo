@@ -14,6 +14,13 @@ public static class DesktopSimEndpoints
 {
     public sealed record PromptBody(string Name, string Text);
 
+    const string ElementsFolder = "elements";
+
+    static string DrawingPath(ProdvisorElement e, StoragePaths paths) =>
+        e.DrawingFile.StartsWith(ElementsFolder + "/")
+            ? paths.Resolve(e.DrawingFile)
+            : Path.Combine(AppContext.BaseDirectory, "samples", e.DrawingFile);
+
     public static void MapDesktopSimEndpoints(this IEndpointRouteBuilder app)
     {
         var sim = app.MapGroup("/sim/api");
@@ -28,24 +35,79 @@ public static class DesktopSimEndpoints
             });
         });
 
-        // The drawing attached to the element (in the demo: the bundled sample files)
-        sim.MapGet("/elements/{id}/drawing", async (string id, AppDbContext db) =>
+        // New element with its drawing (multipart: number, name, material, quantity, drawing)
+        sim.MapPost("/elements", async (HttpRequest request, AppDbContext db, StoragePaths paths, IConfiguration config) =>
+        {
+            if (!request.HasFormContentType) return Results.BadRequest(new { error = "Oczekiwano multipart/form-data." });
+            var form = await request.ReadFormAsync();
+            string? Field(string key) => form[key].ToString().Trim() is { Length: > 0 } v ? v : null;
+
+            var number = Field("number");
+            var name = Field("name");
+            if (number is null || name is null) return Results.BadRequest(new { error = "Numer i nazwa są wymagane." });
+            int? quantity = null;
+            if (Field("quantity") is { } q)
+            {
+                if (!int.TryParse(q, out var qv) || qv <= 0) return Results.BadRequest(new { error = "Ilość musi być liczbą większą od 0." });
+                quantity = qv;
+            }
+
+            var file = form.Files.GetFile("drawing");
+            if (file is null || file.Length == 0) return Results.BadRequest(new { error = "Dodaj rysunek (PNG, JPG, PDF lub DXF)." });
+            var maxMb = config.GetValue("Upload:MaxSizeMb", 20);
+            if (file.Length > maxMb * 1024L * 1024L) return Results.BadRequest(new { error = $"Rysunek jest większy niż {maxMb} MB." });
+            await using var ms = new MemoryStream();
+            await file.CopyToAsync(ms);
+            var bytes = ms.ToArray();
+            var (type, ext) = DrawingFiles.DetectType(bytes);
+            if (type is null) return Results.BadRequest(new { error = "Nieobsługiwany typ pliku. Dozwolone: PNG, JPG, PDF, DXF." });
+
+            // element_id: next number (PRODVISOR assigns it in the real application)
+            var ids = await db.Elements.Select(e => e.Id).ToListAsync();
+            var id = (ids.Select(i => long.TryParse(i, out var n) ? n : 0).DefaultIfEmpty(100230).Max() + 1).ToString();
+
+            // Uploaded drawings live in the data directory; the seeded ones come from the samples folder.
+            var baseName = string.Concat(Path.GetFileNameWithoutExtension(file.FileName).Select(c => char.IsLetterOrDigit(c) || c is '-' or '_' ? c : '_'));
+            var drawingFile = $"{ElementsFolder}/{id}_{(baseName == "" ? "rysunek" : baseName)}{ext}";
+            Directory.CreateDirectory(paths.Resolve(ElementsFolder));
+            await File.WriteAllBytesAsync(paths.Resolve(drawingFile), bytes);
+
+            var element = new ProdvisorElement { Id = id, Number = number, Name = name, Material = Field("material"), Quantity = quantity, DrawingFile = drawingFile };
+            db.Elements.Add(element);
+            await db.SaveChangesAsync();
+            return Results.Ok(element);
+        });
+
+        sim.MapDelete("/elements/{id}", async (string id, AppDbContext db, StoragePaths paths) =>
         {
             var element = await db.Elements.FindAsync(id);
-            var path = element is null ? null : Path.Combine(AppContext.BaseDirectory, "samples", element.DrawingFile);
+            if (element is null) return Results.NotFound();
+            if (await db.SavedTechnologies.FindAsync(id) is { } saved) db.SavedTechnologies.Remove(saved);
+            db.Elements.Remove(element);
+            await db.SaveChangesAsync();
+            if (element.DrawingFile.StartsWith(ElementsFolder + "/") && File.Exists(paths.Resolve(element.DrawingFile)))
+                File.Delete(paths.Resolve(element.DrawingFile));
+            return Results.NoContent();
+        });
+
+        // The drawing attached to the element
+        sim.MapGet("/elements/{id}/drawing", async (string id, AppDbContext db, StoragePaths paths) =>
+        {
+            var element = await db.Elements.FindAsync(id);
+            var path = element is null ? null : DrawingPath(element, paths);
             if (path is null || !File.Exists(path)) return Results.NotFound();
             var type = Path.GetExtension(path).ToLowerInvariant() switch
             {
                 ".png" => "image/png", ".jpg" or ".jpeg" => "image/jpeg", ".pdf" => "application/pdf", _ => "application/dxf",
             };
-            return Results.File(path, type, element!.DrawingFile);
+            return Results.File(path, type, Path.GetFileName(element!.DrawingFile));
         });
 
         // Preview for the screen (browsers cannot display DXF - rendered to PNG here)
-        sim.MapGet("/elements/{id}/preview", async (string id, AppDbContext db, DxfDrawingConverter dxf) =>
+        sim.MapGet("/elements/{id}/preview", async (string id, AppDbContext db, StoragePaths paths, DxfDrawingConverter dxf) =>
         {
             var element = await db.Elements.FindAsync(id);
-            var path = element is null ? null : Path.Combine(AppContext.BaseDirectory, "samples", element.DrawingFile);
+            var path = element is null ? null : DrawingPath(element, paths);
             if (path is null || !File.Exists(path)) return Results.NotFound();
             if (!path.EndsWith(".dxf", StringComparison.OrdinalIgnoreCase)) return Results.Redirect($"/sim/api/elements/{id}/drawing");
             return Results.File(dxf.Convert(await File.ReadAllBytesAsync(path)).Png, "image/png");

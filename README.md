@@ -12,7 +12,7 @@ W demo są dwie strony:
 
 | Adres | Co to jest |
 |---|---|
-| `http://localhost:5080/desktop/` | **Symulacja aplikacji desktop**: lista elementów z rysunkami, kilka promptów technologa (zasady firmy) z wyborem przy generowaniu, „Generuj technologię”, edycja karty, „Zatwierdź i zapisz”. Z serwisem rozmawia wyłącznie przez `/api/v1`. |
+| `http://localhost:5080/desktop/` | **Symulacja aplikacji desktop**: lista elementów z rysunkami (dodawanie nowych z wgraniem rysunku, usuwanie), kilka promptów technologa (zasady firmy) z wyborem przy generowaniu, „Generuj technologię”, edycja karty, „Zatwierdź i zapisz”. Z serwisem rozmawia wyłącznie przez `/api/v1`. |
 | `http://localhost:5080/` | **Panel serwisu**: zapytania (z podglądem requestu do OpenAI), jeden system prompt, maszyny, klucz API / model, opis API. |
 
 ## Uruchomienie

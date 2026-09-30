@@ -31,6 +31,7 @@ function toast(text) {
   setTimeout(() => el.remove(), 2600);
 }
 
+const fileName = (el) => el.drawingFile.split("/").pop();
 const machineByCode = (code) => state.lookup.machines.find((m) => m.code === code);
 const machineLabel = (code) => { const m = machineByCode(code); return m ? `${m.code} – ${m.name}` : `${code} (nieznana)`; };
 
@@ -45,8 +46,10 @@ async function init() {
   try { last = localStorage.getItem("technologyPromptId"); } catch { /* storage unavailable */ }
   const initial = prompts.find((p) => p.id === last) ?? prompts.find((p) => p.id === "cnc") ?? prompts[0];
   Object.assign(state, { elements, lookup, technologyPrompts: prompts, promptId: initial?.id ?? null });
+  $("#add-element").addEventListener("click", showNewElementForm);
   renderElements();
   if (elements.length) selectElement(elements[0].id);
+  else $("#workspace").innerHTML = '<div class="card muted">Brak elementów – dodaj nowy.</div>';
 }
 
 function renderElements() {
@@ -58,6 +61,59 @@ function renderElements() {
         ${e.savedAt ? '· <span class="badge ok">technologia zapisana</span>' : ""}</div>
     </div>`).join("");
   document.querySelectorAll(".element").forEach((el) => el.addEventListener("click", () => selectElement(el.dataset.id)));
+}
+
+// New element: in PRODVISOR the designer creates the element and attaches the drawing
+function showNewElementForm() {
+  if (state.dirty && !confirm("Niezapisane zmiany w technologii zostaną utracone. Kontynuować?")) return;
+  state.element = null; state.card = null; state.job = null; state.dirty = false;
+  renderElements();
+  $("#workspace").innerHTML = `
+    <section class="card" style="max-width:720px">
+      <div class="card-head"><h2>Nowy element</h2></div>
+      <form id="new-element" style="display:flex;flex-direction:column;gap:12px">
+        <div class="grid2">
+          <label class="field">Numer rysunku *<input name="number" required placeholder="np. PV-1002"></label>
+          <label class="field">Nazwa *<input name="name" required placeholder="np. Tuleja dystansowa"></label>
+          <label class="field">Materiał<input name="material" placeholder="np. C45, S355J2, 1.4301"></label>
+          <label class="field">Ilość [szt.]<input name="quantity" type="number" min="1" step="1" placeholder="np. 20"></label>
+        </div>
+        <label class="field">Rysunek * (PNG, JPG, PDF lub DXF)<input name="drawing" type="file" required accept=".png,.jpg,.jpeg,.pdf,.dxf"></label>
+        <div id="new-error"></div>
+        <div class="row">
+          <button class="btn primary" type="submit">Dodaj element</button>
+          <button class="btn" type="button" id="new-cancel">Anuluj</button>
+        </div>
+      </form>
+    </section>`;
+  $("#new-cancel").addEventListener("click", () => state.elements.length && selectElement(state.elements[0].id));
+  $("#new-element").addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const button = e.target.querySelector("button[type=submit]");
+    button.disabled = true;
+    try {
+      const created = await api("/sim/api/elements", { method: "POST", body: new FormData(e.target) });
+      state.elements = await api("/sim/api/elements");
+      toast(`Dodano element ${created.number} (element_id ${created.id}).`);
+      selectElement(created.id);
+    } catch (err) {
+      $("#new-error").innerHTML = `<div class="notice err">${esc(err.message)}</div>`;
+      button.disabled = false;
+    }
+  });
+}
+
+async function deleteElement() {
+  const el = state.element;
+  if (!confirm(`Usunąć element ${el.number} – ${el.name}${el.savedAt ? " razem z zapisaną technologią" : ""}?`)) return;
+  try {
+    await api(`/sim/api/elements/${el.id}`, { method: "DELETE" });
+    state.dirty = false;
+    state.elements = await api("/sim/api/elements");
+    state.element = null;
+    if (state.elements.length) selectElement(state.elements[0].id);
+    else { renderElements(); $("#workspace").innerHTML = '<div class="card muted">Brak elementów – dodaj nowy.</div>'; }
+  } catch (err) { toast(err.message); }
 }
 
 async function selectElement(id) {
@@ -135,7 +191,7 @@ async function generate() {
     const drawing = await (await fetch(`/sim/api/elements/${el.id}/drawing`)).blob();
 
     const form = new FormData();
-    form.append("drawing", drawing, el.drawingFile);
+    form.append("drawing", drawing, fileName(el));
     form.append("element_id", el.id);
     form.append("technology_prompt", prompt.text);
     form.append("technology_prompt_name", prompt.name);
@@ -232,12 +288,12 @@ function render() {
     <section class="card">
       <div class="element-head">
         <div>
-          <div class="card-head"><h2>${esc(el.number)} – ${esc(el.name)}</h2></div>
+          <div class="card-head"><h2>${esc(el.number)} – ${esc(el.name)}</h2><span class="spacer"></span><button class="btn ghost small" id="delete-element">Usuń element</button></div>
           <dl>
             <dt>element_id</dt><dd class="mono">${esc(el.id)}</dd>
             <dt>Materiał</dt><dd>${esc(el.material ?? "—")}</dd>
             <dt>Ilość</dt><dd>${esc(el.quantity ?? "—")} szt.</dd>
-            <dt>Rysunek</dt><dd>${esc(el.drawingFile)}</dd>
+            <dt>Rysunek</dt><dd>${esc(fileName(el))}</dd>
           </dl>
         </div>
         <img class="drawing" id="drawing" src="/sim/api/elements/${esc(el.id)}/preview" alt="Rysunek">
@@ -269,6 +325,7 @@ function render() {
     ${state.card ? renderCard() : ""}`;
 
   $("#generate").addEventListener("click", generate);
+  $("#delete-element").addEventListener("click", deleteElement);
   bindPrompts(prompt);
   $("#drawing").addEventListener("click", (e) => {
     const box = Object.assign(document.createElement("div"), { className: "lightbox", innerHTML: `<img src="${e.target.src}" alt="">` });
