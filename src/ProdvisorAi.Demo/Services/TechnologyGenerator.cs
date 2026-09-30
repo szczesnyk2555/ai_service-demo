@@ -32,7 +32,9 @@ public sealed class TechnologyGenerator(
         if (machines.Count == 0)
             throw new AiServiceException("no_machines", "Brak aktywnych maszyn.");
 
-        var systemPrompt = await db.SystemPrompts.AsNoTracking().FirstAsync(p => p.Id == SeedData.SystemPromptId, ct);
+        var konstruktor = job.Mode == "konstruktor";
+        var systemPrompt = await db.SystemPrompts.AsNoTracking()
+            .FirstAsync(p => p.Id == (konstruktor ? SeedData.KonstruktorPromptId : SeedData.SystemPromptId), ct);
 
         var drawing = new DrawingInput(
             await File.ReadAllBytesAsync(paths.Resolve(job.DrawingPath), ct), job.DrawingContentType, job.DrawingFileName);
@@ -42,7 +44,8 @@ public sealed class TechnologyGenerator(
             new ElementData(job.ElementId, job.PartNumber, job.PartName, job.Material, job.BatchSize, job.DrawingFileName, job.DrawingText),
             machines, materials, drawing,
             maxOutputTokens: config.GetValue("OpenAI:MaxOutputTokens", 16000),
-            reasoningEffort: config["OpenAI:ReasoningEffort"]);
+            reasoningEffort: config["OpenAI:ReasoningEffort"],
+            konstruktor: konstruktor);
 
         // Stored for the admin panel: no base64 payload; the key is never part of the body.
         job.DebugRequestJson = TechnologyRequestBuilder.Redact(request).ToJsonString(Indented);
@@ -50,6 +53,9 @@ public sealed class TechnologyGenerator(
         if (settings.UseMock)
         {
             var (result, raw) = await mock.GenerateAsync(machines, ct);
+            if (konstruktor)   // the canned answer is a full technology - keep only what the designer mode returns
+                result = result with { Operations = [], Material = result.Material! with { Stock = null }, Dimensions = result.Dimensions! with { Stock = null },
+                    GeneralNotes = "[ODPOWIEDŹ MOCK] Wałek stopniowany Ø25h6 / Ø40 / Ø30k6, L=180, materiał C45 (1.0503) wg tabliczki rysunkowej. Ilość sztuk nie jest podana na rysunku." };
             job.ResultJson = JsonSerializer.Serialize(SimulateMaterialChoice(result, materials));
             job.DebugResponseJson = new JsonObject
             {
@@ -89,7 +95,10 @@ public sealed class TechnologyGenerator(
     {
         if (t.Material is not { } m) return t;
         var stock = t.Dimensions?.Stock;
-        var match = MaterialMatcher.Match(m.Grade, stock?.Form, stock?.SizeMm, materials);
+        var part = t.Dimensions?.Part;
+        var match = stock is not null
+            ? MaterialMatcher.Match(m.Grade, stock.Form, stock.SizeMm, materials)
+            : MaterialMatcher.Match(m.Grade, part?.DiameterMm is not null ? "round_bar" : null, part?.DiameterMm, materials);   // konstruktor: by part size
         return t with { Material = m with { SystemMaterialId = match.Status == "matched" ? match.Candidates[0].Id : null } };
     }
 }

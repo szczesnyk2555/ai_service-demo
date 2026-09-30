@@ -14,9 +14,20 @@ public static class TechnologyValidator
 
     static readonly string[] InspectionKeywords = ["kontrol", "pomiar", "inspect", "qc"];
 
-    public static List<ValidationWarning> Validate(TechnologyResult tech, IReadOnlyList<Machine> allMachines, IReadOnlyList<ProdvisorMaterial> materials)
+    public static List<ValidationWarning> Validate(TechnologyResult tech, IReadOnlyList<Machine> allMachines, IReadOnlyList<ProdvisorMaterial> materials, bool konstruktor = false)
     {
         var w = new List<ValidationWarning>();
+        if (konstruktor)
+        {
+            if (tech.Material?.Grade is not { Length: > 0 })
+                w.Add(new("material_missing", null, "Nie odczytano materiału z rysunku."));
+            if (tech.Quantity is null)
+                w.Add(new("quantity_missing", null, "Ilość sztuk nie jest podana na rysunku."));
+            if (tech.Dimensions?.Part is not { } p || (p.LengthMm, p.DiameterMm, p.WidthMm, p.HeightMm) == (null, null, null, null))
+                w.Add(new("dimensions_missing", null, "Nie odczytano wymiarów elementu."));
+            AddMaterialWarning(tech, materials, w);
+            return w;
+        }
         var ops = tech.Operations;
         if (ops.Count == 0)
         {
@@ -58,11 +69,15 @@ public static class TechnologyValidator
         if (!hasInspection)
             w.Add(new("no_final_inspection", null, "Brak operacji kontroli końcowej."));
 
+        AddMaterialWarning(tech, materials, w);
+        return w;
+    }
+
+    static void AddMaterialWarning(TechnologyResult tech, IReadOnlyList<ProdvisorMaterial> materials, List<ValidationWarning> w)
+    {
         if (tech.Material is { } mat && !string.IsNullOrWhiteSpace(mat.Grade)
             && (mat.SystemMaterialId is not { } id || !materials.Any(x => x.Id == id)))
             w.Add(new("material_not_in_system", null, $"Materiał {mat.Grade} nie został dopasowany do kartoteki materiałów - wybierz ręcznie."));
-
-        return w;
     }
 
     static bool ContainsAny(string? text, string[] keywords) =>

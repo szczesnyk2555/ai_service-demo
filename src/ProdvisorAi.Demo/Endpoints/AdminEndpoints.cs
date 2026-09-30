@@ -35,22 +35,22 @@ public static class AdminEndpoints
             catch (AiServiceException ex) { return Results.Ok(new { ok = false, message = ex.Message }); }
         });
 
-        // ---- System prompt (one, used for every request) ----
-        admin.MapGet("/system-prompt", async (AppDbContext db) =>
-            await db.SystemPrompts.AsNoTracking().FirstAsync(p => p.Id == SeedData.SystemPromptId));
-        admin.MapPut("/system-prompt", async (TextBody body, AppDbContext db) =>
+        // ---- System prompt (one per mode: technolog / konstruktor) ----
+        admin.MapGet("/system-prompt", async (string? mode, AppDbContext db) =>
+            await db.SystemPrompts.AsNoTracking().FirstAsync(p => p.Id == PromptId(mode)));
+        admin.MapPut("/system-prompt", async (string? mode, TextBody body, AppDbContext db) =>
         {
             if (string.IsNullOrWhiteSpace(body.Text)) return Results.BadRequest(new { error = "Treść jest wymagana." });
-            var prompt = await db.SystemPrompts.FirstAsync(p => p.Id == SeedData.SystemPromptId);
+            var prompt = await db.SystemPrompts.FirstAsync(p => p.Id == PromptId(mode));
             prompt.Text = body.Text;
             prompt.UpdatedAt = DateTime.UtcNow;
             await db.SaveChangesAsync();
             return Results.Ok(prompt);
         });
-        admin.MapPost("/system-prompt/reset", async (AppDbContext db) =>
+        admin.MapPost("/system-prompt/reset", async (string? mode, AppDbContext db) =>
         {
-            var prompt = await db.SystemPrompts.FirstAsync(p => p.Id == SeedData.SystemPromptId);
-            prompt.Text = SeedData.DefaultSystemPrompt;
+            var prompt = await db.SystemPrompts.FirstAsync(p => p.Id == PromptId(mode));
+            prompt.Text = mode == "konstruktor" ? SeedData.DefaultKonstruktorPrompt : SeedData.DefaultSystemPrompt;
             prompt.UpdatedAt = DateTime.UtcNow;
             await db.SaveChangesAsync();
             return Results.Ok(prompt);
@@ -88,7 +88,7 @@ public static class AdminEndpoints
             (await db.Jobs.AsNoTracking().OrderByDescending(j => j.CreatedAt).Take(200).ToListAsync())
                 .Select(j => new
                 {
-                    j.Id, j.CreatedAt, j.Status, j.ElementId, j.PartNumber, j.TechnologyPromptName, j.Model, j.Mock,
+                    j.Id, j.CreatedAt, j.Status, j.ElementId, j.PartNumber, j.Mode, j.TechnologyPromptName, j.Model, j.Mock,
                     j.DurationMs, j.TotalTokens, j.ErrorKind,
                 }));
         admin.MapGet("/jobs/{id}", async (string id, AppDbContext db) =>
@@ -128,6 +128,8 @@ public static class AdminEndpoints
         effectiveMock = s.UseMock,
         suggestedModels = config.GetSection("OpenAI:SuggestedModels").Get<string[]>() ?? [],
     };
+
+    static string PromptId(string? mode) => mode == "konstruktor" ? SeedData.KonstruktorPromptId : SeedData.SystemPromptId;
 
     static JsonNode? Parse(string? json) => json is null ? null : JsonNode.Parse(json);
 }

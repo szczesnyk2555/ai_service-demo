@@ -84,7 +84,22 @@ public static class SeedData
         new() { Id = id, Type = type, Name = name, HourlyRate = rate, Description = description, Active = active };
 
     // ---- System prompt (one, built into the service, editable in the admin panel) ------------
-    public const string SystemPromptId = "system";
+    public const string SystemPromptId = "system";          // mode "technolog"
+    public const string KonstruktorPromptId = "konstruktor"; // mode "konstruktor"
+
+    public const string DefaultKonstruktorPrompt = """
+        Jesteś doświadczonym konstruktorem. Z załączonego rysunku technicznego odczytaj dane elementu - NIE przygotowuj technologii.
+
+        Odczytaj:
+        1. material.grade - gatunek materiału dokładnie tak, jak na rysunku (tabliczka rysunkowa / uwagi), z oznaczeniami zamiennymi jeśli podane.
+        2. quantity - ilość sztuk, jeśli jest podana na rysunku (tabliczka, uwagi, zestawienie); w przeciwnym razie null.
+        3. dimensions.part - gabaryty gotowego elementu w mm: długość całkowita, największa średnica (elementy obrotowe),
+           szerokość i wysokość (elementy pryzmatyczne, blachy - grubość jako height_mm). Pola, które nie dotyczą elementu = null.
+        4. material.system_material_id - pozycja z kartoteki materiałów o tym samym gatunku (także oznaczenia zamienne EN / PN / W.Nr / AISI)
+           i wymiarze co najmniej takim jak gabaryt elementu; brak odpowiedniej pozycji = null. material.stock = null.
+        5. general_notes - krótko: niejasności, nieczytelne miejsca, rozbieżności między rysunkiem a danymi elementu z PRODVISOR.
+        Nigdy nie wymyślaj wartości niewidocznych na rysunku. Wszystkie pola tekstowe pisz po polsku.
+        """;
 
     public const string DefaultSystemPrompt = """
         Jesteś doświadczonym technologiem produkcji w zakładzie wykonującym obróbkę skrawaniem, konstrukcje spawane i elementy z blach.
@@ -150,6 +165,9 @@ public static class SeedData
             db.SystemPrompts.RemoveRange(db.SystemPrompts);
             db.SystemPrompts.Add(new SystemPrompt { Id = SystemPromptId, Name = "System prompt", Text = DefaultSystemPrompt, IsDefault = true });
         }
+
+        if (db.SystemPrompts.Find(KonstruktorPromptId) is null)
+            db.SystemPrompts.Add(new SystemPrompt { Id = KonstruktorPromptId, Name = "System prompt – Konstruktor", Text = DefaultKonstruktorPrompt });
 
         if (!db.TechnologyPrompts.Any())
             db.TechnologyPrompts.AddRange(DefaultTechnologyPrompts.Select(p => new TechnologyPrompt { Id = p.Id, Name = p.Name, Text = p.Text }));

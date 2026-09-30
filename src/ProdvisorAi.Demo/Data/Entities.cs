@@ -75,6 +75,7 @@ public class GenerationJob
     public string? ElementId { get; set; }
     public string? TechnologyPrompt { get; set; }
     public string? TechnologyPromptName { get; set; }  // which of the technologist's prompts was used (for the log)
+    public string Mode { get; set; } = "technolog";      // "technolog" (full technology) | "konstruktor" (material, quantity, dimensions)
     public string? SystemPromptId { get; set; }        // unused (earlier version: selectable system prompt profiles)
     public string DrawingFileName { get; set; } = "";
     public string DrawingContentType { get; set; } = "";
@@ -125,6 +126,14 @@ public class ProdvisorElement
     public string? Material { get; set; }
     public int? Quantity { get; set; }
     public string DrawingFile { get; set; } = ""; // file name in the samples folder
+
+    // Filled in "konstruktor" mode (read from the drawing, approved by the designer)
+    public double? LengthMm { get; set; }
+    public double? DiameterMm { get; set; }
+    public double? WidthMm { get; set; }
+    public double? HeightMm { get; set; }
+    public int? MaterialKindId { get; set; }   // MaterialsKind.ID
+    public DateTime? ConstructionSavedAt { get; set; }
 }
 
 /// <summary>Technology approved in the desktop application and saved to PRODVISOR (simulation).</summary>

@@ -3,7 +3,11 @@
 // The AI service is used ONLY through its public API: /api/v1/technology-jobs.
 "use strict";
 
+// Two modes (mode sent to the service):
+//   konstruktor - AI reads only material, quantity and dimensions from the drawing -> element card
+//   technolog   - full technology: operations, machines, times + material, dimensions, quantity
 const state = {
+  mode: "technolog",
   elements: [], lookup: { machines: [], materials: [] },
   technologyPrompts: [], promptId: null, promptOpen: false,   // technologist's prompts (company rules), one chosen per generation
   element: null,     // selected element
@@ -42,11 +46,13 @@ async function init() {
   const [elements, lookup, prompts] = await Promise.all([
     api("/sim/api/elements"), api("/sim/api/lookup"), api("/sim/api/technology-prompts"),
   ]);
-  let last = null;
-  try { last = localStorage.getItem("technologyPromptId"); } catch { /* storage unavailable */ }
+  let last = null, mode = null;
+  try { last = localStorage.getItem("technologyPromptId"); mode = localStorage.getItem("mode"); } catch { /* storage unavailable */ }
   const initial = prompts.find((p) => p.id === last) ?? prompts.find((p) => p.id === "cnc") ?? prompts[0];
-  Object.assign(state, { elements, lookup, technologyPrompts: prompts, promptId: initial?.id ?? null });
+  Object.assign(state, { elements, lookup, technologyPrompts: prompts, promptId: initial?.id ?? null, mode: mode === "konstruktor" ? "konstruktor" : "technolog" });
   $("#add-element").addEventListener("click", showNewElementForm);
+  document.querySelectorAll("#modes a").forEach((a) => a.addEventListener("click", (e) => { e.preventDefault(); setMode(a.dataset.mode); }));
+  renderModes();
   renderElements();
   if (elements.length) selectElement(elements[0].id);
   else $("#workspace").innerHTML = '<div class="card muted">Brak elementów – dodaj nowy.</div>';
@@ -58,7 +64,9 @@ function renderElements() {
       <b>${esc(e.number)}</b>
       <span class="small">${esc(e.name)}</span>
       <div class="small muted">ID ${esc(e.id)} · ${esc(e.drawingFile.split(".").pop().toUpperCase())}
-        ${e.savedAt ? '· <span class="badge ok">technologia zapisana</span>' : ""}</div>
+        ${konstruktor()
+          ? (e.constructionSavedAt ? '· <span class="badge ok">dane zapisane</span>' : "")
+          : (e.savedAt ? '· <span class="badge ok">technologia zapisana</span>' : "")}</div>
     </div>`).join("");
   document.querySelectorAll(".element").forEach((el) => el.addEventListener("click", () => selectElement(el.dataset.id)));
 }
@@ -116,15 +124,44 @@ async function deleteElement() {
   } catch (err) { toast(err.message); }
 }
 
+const konstruktor = () => state.mode === "konstruktor";
+
+function renderModes() {
+  document.querySelectorAll("#modes a").forEach((a) => a.classList.toggle("active", a.dataset.mode === state.mode));
+}
+
+function setMode(mode) {
+  if (mode === state.mode) return;
+  if (state.dirty && !confirm("Niezapisane zmiany zostaną utracone. Kontynuować?")) return;
+  state.dirty = false;
+  state.mode = mode;
+  try { localStorage.setItem("mode", mode); } catch { /* storage unavailable */ }
+  renderModes();
+  if (state.element) selectElement(state.element.id);
+  else renderElements();
+}
+
 async function selectElement(id) {
-  if (state.dirty && !confirm("Niezapisane zmiany w technologii zostaną utracone. Kontynuować?")) return;
+  if (state.dirty && !confirm("Niezapisane zmiany zostaną utracone. Kontynuować?")) return;
   state.element = state.elements.find((e) => e.id === id);
   state.card = null; state.job = null; state.saved = null; state.dirty = false;
-  try {
-    const saved = await api(`/sim/api/elements/${id}/technology`);
-    state.saved = { savedAt: saved.savedAt, jobId: saved.jobId };
-    state.card = fromSaved(saved.technology);
-  } catch { /* no technology yet */ }
+  if (konstruktor()) {
+    // Data approved earlier by the designer is on the element card
+    const e = state.element;
+    if (e.constructionSavedAt) {
+      state.saved = { savedAt: e.constructionSavedAt };
+      state.card = {
+        material: { grade: e.material ?? "", material_kind_id: e.materialKindId }, quantity: e.quantity,
+        dimensions: normalizeDims({ part: { length_mm: e.lengthMm, diameter_mm: e.diameterMm, width_mm: e.widthMm, height_mm: e.heightMm } }), notes: "",
+      };
+    }
+  } else {
+    try {
+      const saved = await api(`/sim/api/elements/${id}/technology`);
+      state.saved = { savedAt: saved.savedAt, jobId: saved.jobId };
+      state.card = fromSaved(saved.technology);
+    } catch { /* no technology yet */ }
+  }
   renderElements();
   render();
 }
@@ -181,20 +218,23 @@ function bindPrompts(prompt) {
 // Generation: drawing + element_id + technology_prompt -> 202 { job_id } -> polling
 // ---------------------------------------------------------------------------------------------
 async function generate() {
-  if (state.card && !confirm("Wygenerować nową technologię? Obecna karta zostanie zastąpiona.")) return;
+  if (state.card && !confirm(konstruktor() ? "Odczytać dane z rysunku ponownie? Obecne dane zostaną zastąpione."
+    : "Wygenerować nową technologię? Obecna karta zostanie zastąpiona.")) return;
   const el = state.element;
   state.job = { status: "sending" };
   render();
 
   try {
-    const prompt = await savePrompt();   // unsaved edits of the chosen prompt are saved first
     const drawing = await (await fetch(`/sim/api/elements/${el.id}/drawing`)).blob();
-
     const form = new FormData();
     form.append("drawing", drawing, fileName(el));
     form.append("element_id", el.id);
-    form.append("technology_prompt", prompt.text);
-    form.append("technology_prompt_name", prompt.name);
+    form.append("mode", state.mode);
+    if (!konstruktor()) {
+      const prompt = await savePrompt();   // unsaved edits of the chosen prompt are saved first
+      form.append("technology_prompt", prompt.text);
+      form.append("technology_prompt_name", prompt.name);
+    }
     const { job_id } = await api("/api/v1/technology-jobs", { method: "POST", body: form });
 
     state.job = { id: job_id, status: "pending", startedAt: Date.now() };
@@ -233,6 +273,7 @@ function fromApi(r) {
     })),
     material: { grade: r.material.grade ?? "", stock: r.material.stock ?? "", material_kind_id: r.material.material_kind_id },
     dimensions: normalizeDims(r.dimensions),
+    quantity: r.quantity,
     notes: r.notes ?? "",
   };
 }
@@ -253,6 +294,22 @@ function normalizeDims(d) {
 // ---------------------------------------------------------------------------------------------
 async function save() {
   const c = state.card;
+  if (konstruktor()) {
+    // Designer approves the data read from the drawing -> element card in PRODVISOR
+    const p = c.dimensions.part;
+    const updated = await api(`/sim/api/elements/${state.element.id}/construction`, {
+      method: "PUT", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ material: c.material.grade || null, materialKindId: c.material.material_kind_id ?? null, quantity: num(c.quantity),
+        lengthMm: p.length_mm, diameterMm: p.diameter_mm, widthMm: p.width_mm, heightMm: p.height_mm }),
+    });
+    state.saved = { savedAt: updated.constructionSavedAt };
+    state.dirty = false;
+    state.elements = await api("/sim/api/elements");
+    state.element = state.elements.find((e) => e.id === updated.id);
+    renderElements();
+    render();
+    return toast("Dane elementu zapisane w PRODVISOR.");
+  }
   if (!c.operations.length) return toast("Technologia nie zawiera operacji.");
   const ids = (code) => { const m = machineByCode(code); return { machine_code: code, maszyny_id: m?.maszynyId ?? null, stanowisko_id: m?.stanowiskoId ?? null }; };
   const technology = {
@@ -262,6 +319,7 @@ async function save() {
     })),
     material: { grade: c.material.grade || null, stock: c.material.stock || null, material_kind_id: c.material.material_kind_id ?? null },
     dimensions: c.dimensions,
+    quantity: num(c.quantity),
     notes: c.notes,
   };
   const res = await api(`/sim/api/elements/${state.element.id}/technology`, {
@@ -293,12 +351,20 @@ function render() {
             <dt>element_id</dt><dd class="mono">${esc(el.id)}</dd>
             <dt>Materiał</dt><dd>${esc(el.material ?? "—")}</dd>
             <dt>Ilość</dt><dd>${esc(el.quantity ?? "—")} szt.</dd>
+            ${elementDims(el) ? `<dt>Wymiary</dt><dd>${esc(elementDims(el))}</dd>` : ""}
+            ${el.materialKindId ? `<dt>Kartoteka</dt><dd>${esc(state.lookup.materials.find((m) => m.id === el.materialKindId)?.name ?? `ID ${el.materialKindId}`)}</dd>` : ""}
             <dt>Rysunek</dt><dd>${esc(fileName(el))}</dd>
           </dl>
         </div>
         <img class="drawing" id="drawing" src="/sim/api/elements/${esc(el.id)}/preview" alt="Rysunek">
       </div>
 
+      ${konstruktor() ? `
+      <div class="generate-bar">
+        <button class="btn primary" id="generate" ${busy ? "disabled" : ""}>Odczytaj z rysunku (AI)</button>
+        <span class="small muted">materiał, ilość i wymiary</span>
+        <span id="status"></span>
+      </div>` : `
       <div class="generate-bar">
         <label class="field">Prompt technologa
           <select id="prompt-select">${state.technologyPrompts.map((p) => `<option value="${esc(p.id)}" ${p.id === prompt?.id ? "selected" : ""}>${esc(p.name)}</option>`).join("")}</select>
@@ -319,14 +385,14 @@ function render() {
             ${prompt ? '<button class="btn ghost" id="prompt-delete">Usuń</button>' : ""}
           </div>
         </div>
-      </details>
+      </details>`}
     </section>
     ${state.job?.status === "failed" ? `<div class="notice err"><b>Generowanie nie powiodło się.</b> ${esc(state.job.error?.message)}</div>` : ""}
-    ${state.card ? renderCard() : ""}`;
+    ${state.card ? (konstruktor() ? renderKonstruktorCard() : renderCard()) : ""}`;
 
   $("#generate").addEventListener("click", generate);
   $("#delete-element").addEventListener("click", deleteElement);
-  bindPrompts(prompt);
+  if (!konstruktor()) bindPrompts(prompt);
   $("#drawing").addEventListener("click", (e) => {
     const box = Object.assign(document.createElement("div"), { className: "lightbox", innerHTML: `<img src="${e.target.src}" alt="">` });
     box.addEventListener("click", () => box.remove());
@@ -345,8 +411,8 @@ function renderStatus() {
   s.innerHTML = {
     sending: `<span class="spinner"></span> Wysyłanie…`,
     pending: `<span class="spinner"></span> W kolejce… <span class="small muted mono">${esc(j.id)}</span>`,
-    running: `<span class="spinner"></span> AI generuje technologię… ${secs} s`,
-    done: `<span class="badge ok">Wygenerowano</span> <span class="small muted">${esc(j.model)}${j.mock ? " (MOCK)" : ""} · ${((j.durationMs ?? 0) / 1000).toFixed(1)} s${j.usage ? ` · ${j.usage.total_tokens} tokenów` : ""}</span>`,
+    running: `<span class="spinner"></span> ${konstruktor() ? "AI odczytuje rysunek" : "AI generuje technologię"}… ${secs} s`,
+    done: `<span class="badge ok">${konstruktor() ? "Odczytano" : "Wygenerowano"}</span> <span class="small muted">${esc(j.model)}${j.mock ? " (MOCK)" : ""} · ${((j.durationMs ?? 0) / 1000).toFixed(1)} s${j.usage ? ` · ${j.usage.total_tokens} tokenów` : ""}</span>`,
     failed: `<span class="badge err">Błąd</span>`,
   }[j.status] ?? "";
 }
@@ -405,6 +471,7 @@ function renderCard() {
         <div style="display:flex;flex-direction:column;gap:10px">
           <label class="field">Gatunek (z rysunku)<input id="mat-grade" value="${esc(c.material.grade)}"></label>
           <label class="field">Półfabrykat<input id="mat-stock" value="${esc(c.material.stock)}"></label>
+          <label class="field">Ilość z rysunku [szt.]<input id="quantity" type="number" min="1" step="1" value="${esc(c.quantity)}" placeholder="brak na rysunku"></label>
           <label class="field">Materiał w kartotece (MaterialsKind)
             <select id="mat-kind"><option value="">— brak / do wyboru —</option>${state.lookup.materials.map((m) =>
               `<option value="${m.id}" ${m.id === c.material.material_kind_id ? "selected" : ""}>${esc(m.name)} (ID ${m.id})</option>`).join("")}</select>
@@ -429,13 +496,52 @@ function renderCard() {
     </section>`;
 }
 
+function elementDims(el) {
+  const parts = [["L", el.lengthMm], ["Ø", el.diameterMm], ["B", el.widthMm], ["H", el.heightMm]].filter(([, v]) => v != null);
+  return parts.length ? parts.map(([k, v]) => `${k} ${v}`).join(" · ") + " mm" : "";
+}
+
+// "konstruktor" card: only what is read from the drawing, approved into the element card
+function renderKonstruktorCard() {
+  const c = state.card;
+  const warnings = state.job?.status === "done" ? state.job.warnings ?? [] : [];
+  const p = c.dimensions.part;
+  const dim = (key, label) => `<label class="field">${label}<input type="number" step="0.1" data-dim="part.${key}" value="${esc(p[key])}"></label>`;
+  const el = state.element;
+  return `
+    <section class="card">
+      <div class="card-head">
+        <h2>Dane z rysunku</h2>
+        ${state.dirty ? '<span id="card-state" class="badge accent">do zatwierdzenia</span>' : `<span id="card-state">${state.saved ? '<span class="badge ok">zapisane w PRODVISOR</span>' : ""}</span>`}
+        <span class="spacer"></span>
+        <button class="btn ok" id="save" ${state.dirty ? "" : "disabled"}>Zatwierdź i zapisz</button>
+      </div>
+      ${warnings.length ? `<div class="notice warn" style="margin-bottom:12px"><ul style="margin:0">${warnings.map((w) => `<li>${esc(w.message)}</li>`).join("")}</ul></div>` : ""}
+      <div class="grid2">
+        <div style="display:flex;flex-direction:column;gap:10px">
+          <label class="field">Materiał (gatunek z rysunku)<input id="mat-grade" value="${esc(c.material.grade)}"></label>
+          <label class="field">Materiał w kartotece (MaterialsKind)
+            <select id="mat-kind"><option value="">— brak / do wyboru —</option>${state.lookup.materials.map((m) =>
+              `<option value="${m.id}" ${m.id === c.material.material_kind_id ? "selected" : ""}>${esc(m.name)} (ID ${m.id})</option>`).join("")}</select>
+          </label>
+          <label class="field">Ilość [szt.]<input id="quantity" type="number" min="1" step="1" value="${esc(c.quantity)}" placeholder="brak na rysunku${el.quantity ? ` (w PRODVISOR: ${el.quantity})` : ""}"></label>
+        </div>
+        <div>
+          <div class="field" style="margin-bottom:4px">Wymiary elementu [mm]</div>
+          <div class="dims" style="grid-template-columns:repeat(2,minmax(0,1fr))">${dim("length_mm", "Długość")}${dim("diameter_mm", "Średnica")}${dim("width_mm", "Szerokość")}${dim("height_mm", "Wysokość / grubość")}</div>
+        </div>
+      </div>
+      ${c.notes ? `<div class="notice" style="margin-top:12px"><b>Uwagi AI:</b> ${esc(c.notes)}</div>` : ""}
+    </section>`;
+}
+
 function bindCard() {
   const c = state.card;
   // Typing must not re-render (focus would be lost) - only flag the card as changed.
   const changed = () => {
     state.dirty = true;
     $("#save").disabled = false;
-    $("#card-state").outerHTML = '<span id="card-state" class="badge accent">projekt – do zatwierdzenia</span>';
+    $("#card-state").outerHTML = `<span id="card-state" class="badge accent">${konstruktor() ? "do zatwierdzenia" : "projekt – do zatwierdzenia"}</span>`;
   };
 
   document.querySelectorAll(".ops tbody tr").forEach((tr) => {
@@ -450,15 +556,16 @@ function bindCard() {
       e.preventDefault(); op.alternatives = op.alternatives.filter((x) => x !== a.dataset.removeAlt); state.dirty = true; render();
     }));
   });
-  $("#add-op").addEventListener("click", () => {
+  $("#add-op")?.addEventListener("click", () => {
     c.operations.push({ name: "", machine_code: state.lookup.machines[0]?.code ?? "", alternatives: [], tpz_min: 0, tj_min: 0, description: "", comment: "" });
     state.dirty = true; render();
   });
   $("#save").addEventListener("click", () => save().catch((e) => toast(e.message)));
   $("#mat-grade").addEventListener("input", (e) => { c.material.grade = e.target.value; changed(); });
-  $("#mat-stock").addEventListener("input", (e) => { c.material.stock = e.target.value; changed(); });
+  $("#mat-stock")?.addEventListener("input", (e) => { c.material.stock = e.target.value; changed(); });
+  $("#quantity").addEventListener("input", (e) => { c.quantity = num(e.target.value); changed(); });
   $("#mat-kind").addEventListener("change", (e) => { c.material.material_kind_id = e.target.value ? +e.target.value : null; changed(); });
-  $("#notes").addEventListener("input", (e) => { c.notes = e.target.value; changed(); });
+  $("#notes")?.addEventListener("input", (e) => { c.notes = e.target.value; changed(); });
   document.querySelectorAll("[data-dim]").forEach((input) => input.addEventListener(input.tagName === "SELECT" ? "change" : "input", () => {
     const [a, b] = input.dataset.dim.split(".");
     c.dimensions[a][b] = b === "form" ? input.value : num(input.value);

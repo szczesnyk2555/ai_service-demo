@@ -30,7 +30,7 @@ Instalacja na serwerze: Linux – [docs/DEPLOY-LINUX.md](docs/DEPLOY-LINUX.md); 
 
 | | Endpoint | Opis |
 |---|---|---|
-| `POST` | `/api/v1/technology-jobs` | `multipart/form-data`: `drawing` (PNG/JPG/PDF/DXF), `element_id`, `technology_prompt` (treść wybranego promptu technologa), `technology_prompt_name` (opcjonalnie, do logu) → `202 { job_id, status }` |
+| `POST` | `/api/v1/technology-jobs` | `multipart/form-data`: `drawing` (PNG/JPG/PDF/DXF), `element_id`, `mode` (`technolog` – domyślnie, pełna technologia | `konstruktor` – tylko materiał, ilość i wymiary z rysunku), `technology_prompt` (treść wybranego promptu technologa, tylko tryb technolog), `technology_prompt_name` (opcjonalnie, do logu) → `202 { job_id, status }` |
 | `GET` | `/api/v1/technology-jobs/{job_id}` | Status `pending → running → done / failed`; po `done` – `result` + `warnings` |
 
 Generowanie trwa od kilkunastu sekund do kilku minut, dlatego jest asynchroniczne: desktop dostaje `job_id` od razu i odpytuje GET co 1–2 s.
@@ -49,6 +49,7 @@ Generowanie trwa od kilkunastu sekund do kilku minut, dlatego jest asynchroniczn
     }],
     "material": { "grade": "C45 (1.0503)", "stock": "Pręt okrągły Ø45 x 184 mm", "material_kind_id": 102, "material_kind_name": "Pręt 50 gat. C45" },
     "dimensions": { "part": { "length_mm": 180, "diameter_mm": 40, ... }, "stock": { "form": "round_bar", "size_mm": 45, "length_mm": 184 } },
+    "quantity": null,   // ilość z rysunku (null = brak na rysunku)
     "notes": "..."
   },
   "warnings": [{ "code": "no_final_inspection", "operation_no": null, "message": "Brak operacji kontroli końcowej." }],

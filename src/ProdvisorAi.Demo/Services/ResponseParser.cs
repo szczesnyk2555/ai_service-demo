@@ -66,9 +66,10 @@ public static class ResponseParser
         try
         {
             var result = JsonSerializer.Deserialize<TechnologyResult>(json);
-            if (result?.Operations is null)
-                throw new AiServiceException("bad_response", "The response JSON has no operations array.");
-            return result with { GeneralNotes = result.GeneralNotes ?? "" };
+            if (result is null)
+                throw new AiServiceException("bad_response", "The response JSON is empty.");
+            // "konstruktor" mode has no operations
+            return result with { Operations = result.Operations ?? [], GeneralNotes = result.GeneralNotes ?? "" };
         }
         catch (JsonException ex)
         {

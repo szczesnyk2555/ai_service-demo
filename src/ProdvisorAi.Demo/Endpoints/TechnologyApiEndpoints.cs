@@ -8,7 +8,7 @@ namespace ProdvisorAi.Demo.Endpoints;
 
 /// <summary>
 /// The API used by the PRODVISOR desktop application:
-///   POST /api/v1/technology-jobs         multipart: drawing + element_id + technology_prompt [+ technology_prompt_name] -> 202 { job_id }
+///   POST /api/v1/technology-jobs         multipart: drawing + element_id [+ mode technolog|konstruktor] + technology_prompt [+ technology_prompt_name] -> 202 { job_id }
 ///   GET  /api/v1/technology-jobs/{id}    status; when done: result mapped to PRODVISOR ids (MASZYNY.ID, STANOWISKO.ID, MaterialsKind.ID)
 /// </summary>
 public static class TechnologyApiEndpoints
@@ -30,6 +30,9 @@ public static class TechnologyApiEndpoints
             if (element is null) return Results.NotFound(new { error = $"Nie znaleziono elementu {elementId}." });
 
 
+            var mode = form["mode"].ToString().Trim().ToLowerInvariant() is { Length: > 0 } md ? md : "technolog";
+            if (mode is not ("technolog" or "konstruktor")) return Error("mode: technolog lub konstruktor.");
+
             var file = form.Files.GetFile("drawing");
             if (file is null || file.Length == 0) return Error("Brak rysunku (pole drawing: PNG, JPG, PDF lub DXF).");
             var maxMb = config.GetValue("Upload:MaxSizeMb", 20);
@@ -47,6 +50,7 @@ public static class TechnologyApiEndpoints
                 PartName = element.Name,
                 Material = element.Material,
                 BatchSize = element.Quantity,
+                Mode = mode,
                 TechnologyPrompt = form["technology_prompt"].ToString(),
                 TechnologyPromptName = form["technology_prompt_name"].ToString().Trim() is { Length: > 0 } n ? n : null,
                 DrawingFileName = drawing.FileName,
@@ -86,7 +90,7 @@ public static class TechnologyApiEndpoints
             var machineList = await db.Machines.AsNoTracking().ToListAsync();
             var materialList = await db.Materials.AsNoTracking().ToListAsync();
             var machines = machineList.ToDictionary(m => m.Id, StringComparer.OrdinalIgnoreCase);
-            warnings = TechnologyValidator.Validate(tech, machineList, materialList);
+            warnings = TechnologyValidator.Validate(tech, machineList, materialList, job.Mode == "konstruktor");
 
             object MachineRef(string code) => machines.TryGetValue(code, out var m)
                 ? new { machine_code = m.Id, maszyny_id = m.ProdvisorId, stanowisko_id = m.WorkplaceId, name = m.Name, group = m.GroupName, cooperation = m.IsVirtual }
@@ -114,6 +118,7 @@ public static class TechnologyApiEndpoints
                     material_kind_name = kind?.Name,
                 },
                 dimensions = tech.Dimensions,
+                quantity = tech.Quantity,
                 notes = tech.GeneralNotes,
             };
         }
@@ -122,6 +127,7 @@ public static class TechnologyApiEndpoints
         {
             job_id = job.Id,
             status = job.Status,
+            mode = job.Mode,
             element_id = job.ElementId,
             technology_prompt_name = job.TechnologyPromptName,
             created_at = job.CreatedAt,

@@ -13,6 +13,7 @@ namespace ProdvisorAi.Demo.Endpoints;
 public static class DesktopSimEndpoints
 {
     public sealed record PromptBody(string Name, string Text);
+    public sealed record ConstructionBody(string? Material, int? MaterialKindId, int? Quantity, double? LengthMm, double? DiameterMm, double? WidthMm, double? HeightMm);
 
     const string ElementsFolder = "elements";
 
@@ -31,6 +32,7 @@ public static class DesktopSimEndpoints
             return (await db.Elements.AsNoTracking().OrderBy(e => e.Number).ToListAsync()).Select(e => new
             {
                 e.Id, e.Number, e.Name, e.Material, e.Quantity, e.DrawingFile,
+                e.LengthMm, e.DiameterMm, e.WidthMm, e.HeightMm, e.MaterialKindId, e.ConstructionSavedAt,
                 savedAt = saved.TryGetValue(e.Id, out var at) ? at : (DateTime?)null,
             });
         });
@@ -152,6 +154,21 @@ public static class DesktopSimEndpoints
             return Results.NoContent();
         });
 
+
+        // "Konstruktor" mode: the designer approves material, quantity and dimensions read from the drawing -> element card
+        sim.MapPut("/elements/{id}/construction", async (string id, ConstructionBody body, AppDbContext db) =>
+        {
+            var element = await db.Elements.FindAsync(id);
+            if (element is null) return Results.NotFound();
+            if (body.Quantity is <= 0) return Results.BadRequest(new { error = "Ilość musi być większa od 0." });
+            element.Material = string.IsNullOrWhiteSpace(body.Material) ? null : body.Material.Trim();
+            element.MaterialKindId = body.MaterialKindId;
+            element.Quantity = body.Quantity;
+            (element.LengthMm, element.DiameterMm, element.WidthMm, element.HeightMm) = (body.LengthMm, body.DiameterMm, body.WidthMm, body.HeightMm);
+            element.ConstructionSavedAt = DateTime.UtcNow;
+            await db.SaveChangesAsync();
+            return Results.Ok(element);
+        });
 
         // Approved technology saved to PRODVISOR (simulation: stored as JSON per element)
         sim.MapGet("/elements/{id}/technology", async (string id, AppDbContext db) =>

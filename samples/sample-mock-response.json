@@ -80,5 +80,6 @@
     "part": { "length_mm": 180, "diameter_mm": 40, "width_mm": null, "height_mm": null },
     "stock": { "form": "round_bar", "size_mm": 45, "length_mm": 184 }
   },
+  "quantity": null,
   "general_notes": "[ODPOWIEDŹ MOCK] Wałek stopniowany Ø25h6 / Ø40 / Ø30k6, L=180, materiał C45 wg tabliczki. Czopy h6/k6 z Ra 1,6 wykańczane szlifowaniem (naddatek 0,2 mm) - jeśli toczenie wykańczające wystarcza, op. 5 można usunąć. Obróbka cieplna nie jest określona na rysunku."
 }

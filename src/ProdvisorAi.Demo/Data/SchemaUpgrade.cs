@@ -30,6 +30,13 @@ public static class SchemaUpgrade
         ("Jobs", "SystemPromptId", "TEXT NULL"),
         ("Jobs", "PartName", "TEXT NULL"),
         ("Jobs", "TechnologyPromptName", "TEXT NULL"),
+        ("Jobs", "Mode", "TEXT NOT NULL DEFAULT 'technolog'"),
+        ("Elements", "LengthMm", "REAL NULL"),
+        ("Elements", "DiameterMm", "REAL NULL"),
+        ("Elements", "WidthMm", "REAL NULL"),
+        ("Elements", "HeightMm", "REAL NULL"),
+        ("Elements", "MaterialKindId", "INTEGER NULL"),
+        ("Elements", "ConstructionSavedAt", "TEXT NULL"),
     ];
 
     public static void Apply(AppDbContext db)

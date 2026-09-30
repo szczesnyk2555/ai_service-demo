@@ -34,10 +34,12 @@ public sealed record TechnologyDimensions(
     [property: JsonPropertyName("part")] PartDimensions? Part,
     [property: JsonPropertyName("stock")] StockDimensions? Stock);
 
+// operations is empty in "konstruktor" mode (only material, quantity and dimensions are read from the drawing)
 public sealed record TechnologyResult(
     [property: JsonPropertyName("operations")] List<TechnologyOperation> Operations,
     [property: JsonPropertyName("material")] TechnologyMaterial? Material,
     [property: JsonPropertyName("dimensions")] TechnologyDimensions? Dimensions,
+    [property: JsonPropertyName("quantity")] int? Quantity,                 // quantity as on the drawing (null = not on the drawing)
     [property: JsonPropertyName("general_notes")] string GeneralNotes);
 
 /// <summary>A post-validation finding. Reported to the client, never blocks the result.</summary>

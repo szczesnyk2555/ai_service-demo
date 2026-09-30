@@ -39,11 +39,11 @@ async function renderJobs() {
     <section class="card">
       <div class="card-head"><h2>Zapytania z aplikacji desktop</h2><span class="spacer"></span><button class="btn small" id="reload">Odśwież</button></div>
       ${jobs.length ? `<div class="table-wrap"><table>
-        <thead><tr><th>Data</th><th>Status</th><th>Element</th><th>Prompt technologa</th><th>Model</th><th>Czas</th><th>Tokeny</th></tr></thead>
+        <thead><tr><th>Data</th><th>Status</th><th>Element</th><th>Tryb</th><th>Prompt technologa</th><th>Model</th><th>Czas</th><th>Tokeny</th></tr></thead>
         <tbody>${jobs.map((j) => `
           <tr class="clickable" data-id="${esc(j.id)}">
             <td>${esc(fmtDate(j.createdAt))}</td><td>${statusBadge(j.status)} ${j.errorKind ? `<span class="small muted">${esc(j.errorKind)}</span>` : ""}</td>
-            <td><b>${esc(j.partNumber)}</b> <span class="small muted">(${esc(j.elementId)})</span></td><td>${esc(j.technologyPromptName ?? "")}</td>
+            <td><b>${esc(j.partNumber)}</b> <span class="small muted">(${esc(j.elementId)})</span></td><td>${j.mode === "konstruktor" ? "Konstruktor" : "Technolog"}</td><td>${esc(j.technologyPromptName ?? "")}</td>
             <td>${esc(j.model ?? "")}${j.mock ? ' <span class="badge warn">MOCK</span>' : ""}</td>
             <td>${j.durationMs != null ? (j.durationMs / 1000).toFixed(1) + " s" : ""}</td><td>${esc(j.totalTokens ?? "")}</td>
           </tr>`).join("")}</tbody></table></div>`
@@ -62,7 +62,7 @@ async function renderJob(id) {
       <div class="card-head"><h2>Zapytanie <span class="mono small">${esc(a.job_id)}</span></h2>${statusBadge(a.status)}${a.mock ? '<span class="badge warn">MOCK</span>' : ""}</div>
       <div class="grid2">
         <div>
-          <p>Element <b class="mono">${esc(a.element_id)}</b> · prompt technologa <b>${esc(a.technology_prompt_name ?? "—")}</b> · model ${esc(a.model ?? "")}
+          <p>Element <b class="mono">${esc(a.element_id)}</b> · tryb <b>${a.mode === "konstruktor" ? "Konstruktor" : "Technolog"}</b> · prompt technologa <b>${esc(a.technology_prompt_name ?? "—")}</b> · model ${esc(a.model ?? "")}
             ${a.duration_ms != null ? ` · ${(a.duration_ms / 1000).toFixed(1)} s` : ""}${a.usage ? ` · tokeny ${a.usage.input_tokens} / ${a.usage.output_tokens}` : ""}</p>
           ${a.error ? `<div class="notice err">${esc(a.error.kind)}: ${esc(a.error.message)}</div>` : ""}
           <h3 style="margin:12px 0 6px">Prompt technologa (z desktopu)</h3>
@@ -79,29 +79,35 @@ async function renderJob(id) {
 }
 
 // ---------------------------------------------------------------------------------------------
-// System prompt (one, built into the service)
+// System prompt (built into the service, one per mode)
 // ---------------------------------------------------------------------------------------------
-async function renderSystemPrompt() {
-  const p = await api("/api/admin/system-prompt");
+async function renderSystemPrompt(mode = "technolog") {
+  const p = await api(`/api/admin/system-prompt?mode=${mode}`);
   view().innerHTML = `
-    <div class="notice">Jeden system prompt serwisu, używany w każdym zapytaniu. Zasady firmy (prompty technologa) są w aplikacji desktop –
-      technolog wybiera jeden z nich przy klikaniu „Generuj” i jego treść przychodzi w polu <span class="mono">technology_prompt</span>.</div>
+    <div class="notice">System prompt serwisu – jeden na tryb. <b>Technolog</b>: pełna technologia; zasady firmy (prompty technologa) są w aplikacji
+      desktop i przychodzą w polu <span class="mono">technology_prompt</span>. <b>Konstruktor</b>: tylko materiał, ilość i wymiary z rysunku.</div>
     <section class="card">
-      <div class="card-head"><h2>System prompt</h2><span class="small muted">zmieniono ${esc(fmtDate(p.updatedAt))}</span></div>
+      <div class="card-head">
+        <h2>System prompt</h2>
+        <div class="row">${["technolog", "konstruktor"].map((m) =>
+          `<button class="btn small ${m === mode ? "primary" : ""}" data-mode="${m}">${m === "technolog" ? "Technolog" : "Konstruktor"}</button>`).join("")}</div>
+        <span class="spacer"></span><span class="small muted">zmieniono ${esc(fmtDate(p.updatedAt))}</span>
+      </div>
       <textarea id="p-text" class="code" rows="24">${esc(p.text)}</textarea>
       <div class="row" style="margin-top:10px">
         <button class="btn primary" id="p-save">Zapisz</button>
         <button class="btn" id="p-reset">Przywróć domyślny</button>
       </div>
     </section>`;
+  document.querySelectorAll("button[data-mode]").forEach((b) => b.addEventListener("click", () => renderSystemPrompt(b.dataset.mode)));
   $("#p-save").addEventListener("click", async () => {
-    await api("/api/admin/system-prompt", { method: "PUT", json: { text: $("#p-text").value } }).then(() => toast("Zapisano.")).catch((e) => toast(e.message));
-    renderSystemPrompt();
+    await api(`/api/admin/system-prompt?mode=${mode}`, { method: "PUT", json: { text: $("#p-text").value } }).then(() => toast("Zapisano.")).catch((e) => toast(e.message));
+    renderSystemPrompt(mode);
   });
   $("#p-reset").addEventListener("click", async () => {
     if (!confirm("Przywrócić domyślną treść system promptu?")) return;
-    await api("/api/admin/system-prompt/reset", { method: "POST" });
-    renderSystemPrompt();
+    await api(`/api/admin/system-prompt/reset?mode=${mode}`, { method: "POST" });
+    renderSystemPrompt(mode);
   });
 }
 
@@ -189,11 +195,11 @@ function renderApi() {
       <h2 style="margin-bottom:12px">API dla aplikacji desktop</h2>
       <table>
         <tbody>
-          <tr><td class="mono">POST /api/v1/technology-jobs</td><td><span class="mono">multipart/form-data</span>: <b>drawing</b> (PNG/JPG/PDF/DXF), <b>element_id</b>, <b>technology_prompt</b> (treść wybranego promptu technologa), <b>technology_prompt_name</b> (opcjonalnie, do logu)<br>
+          <tr><td class="mono">POST /api/v1/technology-jobs</td><td><span class="mono">multipart/form-data</span>: <b>drawing</b> (PNG/JPG/PDF/DXF), <b>element_id</b>, <b>mode</b> (<span class="mono">technolog</span> – domyślnie, pełna technologia | <span class="mono">konstruktor</span> – tylko materiał, ilość, wymiary), <b>technology_prompt</b> (treść wybranego promptu technologa), <b>technology_prompt_name</b> (opcjonalnie, do logu)<br>
             → <span class="mono">202 { job_id, status }</span>. Serwis sam czyta dane elementu, maszyny, grupy i materiały z tabel PRODVISOR.</td></tr>
           <tr><td class="mono">GET /api/v1/technology-jobs/{job_id}</td><td>Odpytywanie co 1–2 s. <span class="mono">status</span>: pending → running → done | failed.<br>
             Po <b>done</b>: <span class="mono">result.operations[]</span> (no, name, machine { machine_code, maszyny_id, stanowisko_id }, alternatives[], tpz_min, tj_min, description, comment),
-            <span class="mono">result.material</span> (grade, stock, material_kind_id), <span class="mono">result.dimensions</span>, <span class="mono">result.notes</span>, <span class="mono">warnings[]</span>.</td></tr>
+            <span class="mono">result.material</span> (grade, stock, material_kind_id), <span class="mono">result.dimensions</span>, <span class="mono">result.quantity</span>, <span class="mono">result.notes</span>, <span class="mono">warnings[]</span>.</td></tr>
         </tbody>
       </table>
       <h3 style="margin:16px 0 8px">Przykład (curl)</h3>

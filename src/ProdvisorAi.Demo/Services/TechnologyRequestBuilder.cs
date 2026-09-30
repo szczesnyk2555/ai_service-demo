@@ -31,7 +31,7 @@ public static class TechnologyRequestBuilder
     public static JsonObject Build(
         string model, string systemPrompt, string technologyPrompt, ElementData element,
         IReadOnlyList<Machine> machines, IReadOnlyList<ProdvisorMaterial> materials, DrawingInput drawing,
-        int maxOutputTokens, string? reasoningEffort)
+        int maxOutputTokens, string? reasoningEffort, bool konstruktor = false)
     {
         var body = new JsonObject
         {
@@ -44,7 +44,7 @@ public static class TechnologyRequestBuilder
                     ["role"] = "user",
                     ["content"] = new JsonArray
                     {
-                        new JsonObject { ["type"] = "input_text", ["text"] = BuildUserText(technologyPrompt, element, machines, materials) },
+                        new JsonObject { ["type"] = "input_text", ["text"] = konstruktor ? BuildKonstruktorText(element, materials) : BuildUserText(technologyPrompt, element, machines, materials) },
                         BuildDrawingPart(drawing),
                     },
                 },
@@ -56,7 +56,7 @@ public static class TechnologyRequestBuilder
                     ["type"] = "json_schema",
                     ["name"] = SchemaName,
                     ["strict"] = true,
-                    ["schema"] = BuildSchema(machines.Select(m => m.Id)),
+                    ["schema"] = konstruktor ? BuildKonstruktorSchema() : BuildSchema(machines.Select(m => m.Id)),
                 },
             },
             ["max_output_tokens"] = maxOutputTokens,
@@ -72,17 +72,6 @@ public static class TechnologyRequestBuilder
     {
         var ids = new JsonArray();
         foreach (var id in machineIds) ids.Add(id);
-
-        static JsonObject T(params string[] types) => types.Length == 1
-            ? new JsonObject { ["type"] = types[0] }
-            : new JsonObject { ["type"] = new JsonArray(types.Select(t => (JsonNode)t).ToArray()) };
-        static JsonObject Obj(JsonObject props) => new()
-        {
-            ["type"] = "object",
-            ["properties"] = props,
-            ["required"] = new JsonArray(props.Select(p => (JsonNode)p.Key).ToArray()),
-            ["additionalProperties"] = false,
-        };
 
         return Obj(new JsonObject
         {
@@ -121,20 +110,47 @@ public static class TechnologyRequestBuilder
                     ["length_mm"] = T("number", "null"),
                 }),
             }),
+            ["quantity"] = T("integer", "null"),
             ["general_notes"] = T("string"),
         });
     }
 
-    static string BuildUserText(string technologyPrompt, ElementData element, IReadOnlyList<Machine> machines, IReadOnlyList<ProdvisorMaterial> materials)
+    /// <summary>"konstruktor" mode: only material, quantity and part dimensions read from the drawing.</summary>
+    public static JsonObject BuildKonstruktorSchema() => Obj(new JsonObject
+    {
+        ["material"] = Obj(new JsonObject
+        {
+            ["grade"] = T("string", "null"),
+            ["stock"] = T("string", "null"),
+            ["system_material_id"] = T("integer", "null"),
+        }),
+        ["dimensions"] = Obj(new JsonObject { ["part"] = PartDimensionsSchema() }),
+        ["quantity"] = T("integer", "null"),
+        ["general_notes"] = T("string"),
+    });
+
+    static JsonObject PartDimensionsSchema() => Obj(new JsonObject
+    {
+        ["length_mm"] = T("number", "null"), ["diameter_mm"] = T("number", "null"),
+        ["width_mm"] = T("number", "null"), ["height_mm"] = T("number", "null"),
+    });
+
+    static JsonObject T(params string[] types) => types.Length == 1
+        ? new JsonObject { ["type"] = types[0] }
+        : new JsonObject { ["type"] = new JsonArray(types.Select(t => (JsonNode)t).ToArray()) };
+
+    static JsonObject Obj(JsonObject props) => new()
+    {
+        ["type"] = "object",
+        ["properties"] = props,
+        ["required"] = new JsonArray(props.Select(p => (JsonNode)p.Key).ToArray()),
+        ["additionalProperties"] = false,
+    };
+
+    static void AppendElement(StringBuilder sb, ElementData element)
     {
         static string Or(string? v) => string.IsNullOrWhiteSpace(v) ? "brak danych (odczytaj z rysunku, jeśli widoczne)" : v;
-        var sb = new StringBuilder();
-
-        sb.AppendLine("## Instrukcje technologiczne (zasady firmowe)");
-        sb.AppendLine(string.IsNullOrWhiteSpace(technologyPrompt) ? "(brak)" : technologyPrompt.Trim());
-        sb.AppendLine();
-
-        sb.AppendLine("## Element");
+        sb.AppendLine("## Element (dane z PRODVISOR)");
         sb.AppendLine($"- Numer: {Or(element.Number)}");
         sb.AppendLine($"- Nazwa: {Or(element.Name)}");
         sb.AppendLine($"- Materiał: {Or(element.Material)}");
@@ -147,6 +163,38 @@ public static class TechnologyRequestBuilder
             sb.AppendLine(element.DrawingText.Trim());
             sb.AppendLine();
         }
+    }
+
+    static void AppendMaterials(StringBuilder sb, IReadOnlyList<ProdvisorMaterial> materials)
+    {
+        sb.AppendLine("Lista materiałów (ID | nazwa):");
+        foreach (var m in materials.Where(m => m.Active).OrderBy(m => m.Name))
+            sb.Append(m.Id).Append(" | ").AppendLine(m.Name);
+        sb.AppendLine();
+    }
+
+    static string BuildKonstruktorText(ElementData element, IReadOnlyList<ProdvisorMaterial> materials)
+    {
+        var sb = new StringBuilder();
+        AppendElement(sb, element);
+        sb.AppendLine("## Kartoteka materiałów");
+        sb.AppendLine("material.system_material_id = ID z listy poniżej: ten sam gatunek (także oznaczenia zamienne, np. C45 = 1.0503 = STAL 45,");
+        sb.AppendLine("42CrMo4 = 40HM, S355J2 = 18G2A, S235JR = St3S, 1.4301 = 304), wymiar co najmniej taki jak gabaryt elementu, najmniejszy wystarczający;");
+        sb.AppendLine("pomijaj materiały klienta / powierzone / testowe; brak właściwego gatunku -> null i informacja w general_notes.");
+        AppendMaterials(sb, materials);
+        sb.AppendLine("Odczytaj materiał, ilość i wymiary elementu z załączonego rysunku. Wszystkie pola tekstowe pisz po polsku.");
+        return sb.ToString();
+    }
+
+    static string BuildUserText(string technologyPrompt, ElementData element, IReadOnlyList<Machine> machines, IReadOnlyList<ProdvisorMaterial> materials)
+    {
+        var sb = new StringBuilder();
+
+        sb.AppendLine("## Instrukcje technologiczne (zasady firmowe)");
+        sb.AppendLine(string.IsNullOrWhiteSpace(technologyPrompt) ? "(brak)" : technologyPrompt.Trim());
+        sb.AppendLine();
+
+        AppendElement(sb, element);
 
         // Machines: only what the model needs to decide (no costs, no database ids).
         sb.AppendLine("## Maszyny (używaj WYŁĄCZNIE tych machine_id)");
@@ -186,10 +234,8 @@ public static class TechnologyRequestBuilder
         sb.AppendLine("  42CrMo4 = 40HM, S355J2 = 18G2A, S235JR = St3S, 1.2379 = NC11LV, EN AW-2017 = PA6, 1.4301 = 304), ignoruj literówki;");
         sb.AppendLine("- potem FORMĘ i WYMIAR: pozycja co najmniej tak duża jak półfabrykat, najmniejsza wystarczająca; pozycja bez wymiaru, jeśli brak lepszej;");
         sb.AppendLine("- pomijaj materiały klienta / powierzone / testowe; brak właściwego gatunku -> null i informacja w general_notes.");
-        sb.AppendLine("Lista materiałów (ID | nazwa):");
-        foreach (var m in materials.Where(m => m.Active).OrderBy(m => m.Name))
-            sb.Append(m.Id).Append(" | ").AppendLine(m.Name);
-        sb.AppendLine();
+        sb.AppendLine("quantity = ilość sztuk, jeśli podana na rysunku (tabliczka, uwagi, zestawienie); inaczej null.");
+        AppendMaterials(sb, materials);
 
         sb.AppendLine("Przygotuj projekt technologii dla elementu z załączonego rysunku. Wszystkie pola tekstowe pisz po polsku.");
         return sb.ToString();
