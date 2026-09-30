@@ -4,106 +4,67 @@ using ProdvisorAi.Demo.Models;
 namespace ProdvisorAi.Demo.Services;
 
 /// <summary>
-/// Server-side post-validation of a (generated or edited) technology.
-/// Structured Outputs guarantee the SHAPE of the answer; this checks the CONTENT.
-/// Findings are flagged for the technologist - nothing is rejected.
+/// Post-validation of the model's answer. Structured Outputs guarantee the SHAPE; this checks the CONTENT.
+/// Findings are returned to the client as warnings - nothing is rejected.
 /// </summary>
 public static class TechnologyValidator
 {
-    // Sanity bounds for a typical machining job shop (minutes).
     const double MaxSetupMin = 480;   // one shift
     const double MaxUnitMin = 600;
 
-    static readonly string[] InspectionKeywords = ["inspect", "qc", "quality", "control", "kontrol", "pomiar", "measure"];
+    static readonly string[] InspectionKeywords = ["kontrol", "pomiar", "inspect", "qc"];
 
-    public static List<ValidationWarning> Validate(TechnologyResult tech, IReadOnlyList<Machine> allMachines, string? userMaterial = null)
+    public static List<ValidationWarning> Validate(TechnologyResult tech, IReadOnlyList<Machine> allMachines, IReadOnlyList<ProdvisorMaterial> materials)
     {
         var w = new List<ValidationWarning>();
-
-        // Material: must be known; if the user typed one, it should match what was read from the drawing.
-        if (tech.Material is { } mat)
-        {
-            if (string.IsNullOrWhiteSpace(mat.Grade))
-                w.Add(new("material_missing", "warning", null, "material", null, "Material grade is not specified."));
-            else if (!string.IsNullOrWhiteSpace(userMaterial) && !Normalize(mat.Grade).Contains(Normalize(userMaterial)))
-                w.Add(new("material_mismatch", "warning", null, "material", Args(("drawing", mat.Grade), ("user", userMaterial)),
-                    $"Material on the drawing ({mat.Grade}) differs from the part data ({userMaterial})."));
-        }
         var ops = tech.Operations;
-
         if (ops.Count == 0)
         {
-            w.Add(new("no_operations", "error", null, null, null, "The technology contains no operations."));
+            w.Add(new("no_operations", null, "Technologia nie zawiera operacji."));
             return w;
         }
 
-        // Operation numbers: unique and sequential 1..n
         foreach (var dup in ops.GroupBy(o => o.No).Where(g => g.Count() > 1))
-            w.Add(new("duplicate_number", "error", dup.Key, "no", Args(("no", dup.Key)), $"Operation number {dup.Key} is used more than once."));
-
-        for (var i = 0; i < ops.Count; i++)
-        {
-            if (ops[i].No != i + 1)
-            {
-                w.Add(new("numbering_not_sequential", "warning", ops[i].No, "no", Args(("expected", i + 1), ("actual", ops[i].No)),
-                    $"Operations are not numbered sequentially (position {i + 1} has number {ops[i].No})."));
-                break; // one hint is enough; the UI offers "Renumber"
-            }
-        }
+            w.Add(new("duplicate_number", dup.Key, $"Numer operacji {dup.Key} występuje więcej niż raz."));
+        if (ops.Where((o, i) => o.No != i + 1).Any())
+            w.Add(new("numbering_not_sequential", null, "Operacje nie są numerowane kolejno 1..n."));
 
         var machines = allMachines.ToDictionary(m => m.Id, StringComparer.OrdinalIgnoreCase);
-
         foreach (var op in ops)
         {
-            // Machine exists and is active
             if (!machines.TryGetValue(op.MachineId ?? "", out var machine))
-                w.Add(new("machine_unknown", "error", op.No, "machine_id", Args(("machine", op.MachineId)), $"Op {op.No}: machine '{op.MachineId}' does not exist."));
+                w.Add(new("machine_unknown", op.No, $"Op. {op.No}: maszyna '{op.MachineId}' nie istnieje."));
             else if (!machine.Active)
-                w.Add(new("machine_inactive", "error", op.No, "machine_id", Args(("machine", op.MachineId)), $"Op {op.No}: machine '{op.MachineId}' is not active."));
+                w.Add(new("machine_inactive", op.No, $"Op. {op.No}: maszyna '{op.MachineId}' jest nieaktywna."));
 
-            // Machine group (alternatives): must exist and be active, must not repeat machine_id
             foreach (var alt in op.AlternativeMachineIds ?? [])
             {
                 if (string.Equals(alt, op.MachineId, StringComparison.OrdinalIgnoreCase))
-                    w.Add(new("alternative_duplicate", "info", op.No, "machine_id", Args(("machine", alt)), $"Op {op.No}: {alt} is both the machine and an alternative."));
+                    w.Add(new("alternative_duplicate", op.No, $"Op. {op.No}: {alt} jest jednocześnie maszyną główną i alternatywną."));
                 else if (!machines.TryGetValue(alt, out var am) || !am.Active)
-                    w.Add(new("alternative_inactive", "warning", op.No, "machine_id", Args(("machine", alt)), $"Op {op.No}: alternative machine {alt} does not exist or is inactive."));
+                    w.Add(new("alternative_inactive", op.No, $"Op. {op.No}: maszyna alternatywna {alt} nie istnieje lub jest nieaktywna."));
             }
 
-            // Times > 0 and within sane bounds (not for external cooperation: those are handling times, 0 is fine)
-            if (machine?.IsVirtual == true) { }
-            else if (op.SetupTimeMin <= 0)
-                w.Add(new("setup_time_invalid", "warning", op.No, "setup_time_min", null, $"Op {op.No}: setup time should be greater than 0."));
-            else if (op.SetupTimeMin > MaxSetupMin)
-                w.Add(new("setup_time_high", "warning", op.No, "setup_time_min", Args(("value", op.SetupTimeMin), ("max", MaxSetupMin)),
-                    $"Op {op.No}: setup time {op.SetupTimeMin} min looks unusually high (> {MaxSetupMin})."));
-
-            if (machine?.IsVirtual == true) { }
-            else if (op.UnitTimeMin <= 0)
-                w.Add(new("unit_time_invalid", "warning", op.No, "unit_time_min", null, $"Op {op.No}: unit time should be greater than 0."));
-            else if (op.UnitTimeMin > MaxUnitMin)
-                w.Add(new("unit_time_high", "warning", op.No, "unit_time_min", Args(("value", op.UnitTimeMin), ("max", MaxUnitMin)),
-                    $"Op {op.No}: unit time {op.UnitTimeMin} min looks unusually high (> {MaxUnitMin})."));
-
-            if (op.Confidence == "low")
-                w.Add(new("low_confidence", "info", op.No, "confidence", null, $"Op {op.No}: the model has low confidence - please review."));
+            // External cooperation: handling times, 0 is fine
+            if (machine?.IsVirtual == true) continue;
+            if (op.SetupTimeMin <= 0) w.Add(new("setup_time_invalid", op.No, $"Op. {op.No}: TPZ powinno być większe od 0."));
+            else if (op.SetupTimeMin > MaxSetupMin) w.Add(new("setup_time_high", op.No, $"Op. {op.No}: TPZ {op.SetupTimeMin} min wygląda na zawyżone (> {MaxSetupMin})."));
+            if (op.UnitTimeMin <= 0) w.Add(new("unit_time_invalid", op.No, $"Op. {op.No}: TJ powinno być większe od 0."));
+            else if (op.UnitTimeMin > MaxUnitMin) w.Add(new("unit_time_high", op.No, $"Op. {op.No}: TJ {op.UnitTimeMin} min wygląda na zawyżone (> {MaxUnitMin})."));
         }
 
-        // Final inspection present? (QC machine type, or an inspection-like operation name)
         var hasInspection = ops.Any(op =>
-            (machines.TryGetValue(op.MachineId ?? "", out var m) && ContainsAny(m.Type, InspectionKeywords))
-            || ContainsAny(op.Name, InspectionKeywords));
+            (machines.TryGetValue(op.MachineId ?? "", out var m) && ContainsAny(m.Type, InspectionKeywords)) || ContainsAny(op.Name, InspectionKeywords));
         if (!hasInspection)
-            w.Add(new("no_final_inspection", "warning", null, null, null, "No final inspection operation found."));
+            w.Add(new("no_final_inspection", null, "Brak operacji kontroli końcowej."));
+
+        if (tech.Material is { } mat && !string.IsNullOrWhiteSpace(mat.Grade)
+            && (mat.SystemMaterialId is not { } id || !materials.Any(x => x.Id == id)))
+            w.Add(new("material_not_in_system", null, $"Materiał {mat.Grade} nie został dopasowany do kartoteki materiałów - wybierz ręcznie."));
 
         return w;
     }
 
-    static string Normalize(string s) => new string(s.Where(char.IsLetterOrDigit).Select(char.ToUpperInvariant).ToArray());
-
     static bool ContainsAny(string? text, string[] keywords) =>
         text is not null && keywords.Any(k => text.Contains(k, StringComparison.OrdinalIgnoreCase));
-
-    internal static Dictionary<string, string> Args(params (string Key, object? Value)[] args) =>
-        args.ToDictionary(a => a.Key, a => Convert.ToString(a.Value, System.Globalization.CultureInfo.InvariantCulture) ?? "");
 }

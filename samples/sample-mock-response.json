@@ -1,92 +1,84 @@
 {
-  "material": {
-    "grade": "C45 (1.0503)",
-    "stock": "Round bar Ø45 x 184 mm",
-    "heat_treatment": null,
-    "source": "drawing",
-    "stock_form": "round_bar",
-    "stock_size_mm": 45,
-    "stock_length_mm": 184
-  },
   "operations": [
     {
       "no": 1,
-      "name": "Cut bar stock to length",
+      "name": "Cięcie materiału",
       "machine_id": "0101",
       "alternative_machine_ids": ["0102"],
-      "description": "Cut Ø45 C45 round bar to 184 mm (180 mm overall length + 4 mm facing allowance).",
       "setup_time_min": 10,
       "unit_time_min": 2.5,
-      "tools": "Saw blade for steel",
-      "confidence": "high"
+      "description": "Ciąć pręt okrągły Ø45 C45 na długość 184 mm (180 mm + 4 mm naddatku na planowanie).",
+      "comment": null
     },
     {
       "no": 2,
-      "name": "CNC turning - side A",
+      "name": "Toczenie CNC - strona A",
       "machine_id": "0502",
       "alternative_machine_ids": ["0503", "0504"],
-      "description": "Clamp on raw bar. Face side A, centre drill, rough and finish turn Ø40, turn Ø25h6 x 40 mm leaving 0.2 mm grinding allowance, chamfer 1x45°.",
       "setup_time_min": 35,
       "unit_time_min": 6.0,
-      "tools": "CNMG 120408 roughing insert, VBMT 160404 finishing insert, centre drill A3.15",
-      "confidence": "high"
+      "description": "Mocowanie na surowym pręcie. Planować stronę A, nakiełek, toczyć Ø40 oraz Ø25h6 x 40 z naddatkiem 0,2 mm na szlifowanie, fazka 1x45°.",
+      "comment": "Płytki CNMG 120408 (zgrubna), VBMT 160404 (wykańczająca)."
     },
     {
       "no": 3,
-      "name": "CNC turning - side B",
+      "name": "Toczenie CNC - strona B",
       "machine_id": "0502",
       "alternative_machine_ids": ["0503", "0504"],
-      "description": "Re-clamp on Ø40 with soft jaws. Face to overall length 180 ±0.1, centre drill, turn Ø30k6 x 40 mm leaving 0.2 mm grinding allowance, chamfer 1x45°.",
       "setup_time_min": 20,
       "unit_time_min": 4.5,
-      "tools": "VBMT 160404 finishing insert, centre drill A3.15, soft jaws Ø40",
-      "confidence": "high"
+      "description": "Przemocować na Ø40 w miękkich szczękach. Planować na długość 180 ±0,1, nakiełek, toczyć Ø30k6 x 40 z naddatkiem 0,2 mm, fazka 1x45°.",
+      "comment": "Ta sama tokarka co op. 2 - jedno ustawienie szczęk."
     },
     {
       "no": 4,
-      "name": "CNC milling - keyway",
+      "name": "Frezowanie CNC - rowek wpustowy",
       "machine_id": "0402",
       "alternative_machine_ids": ["0403", "0405", "0407"],
-      "description": "Clamp in a V-block fixture on Ø40. Mill keyway 8P9 x 28 mm, depth t=4 mm, on the Ø30k6 section, 6 mm from the shoulder.",
       "setup_time_min": 30,
       "unit_time_min": 4.0,
-      "tools": "Ø8 carbide keyway end mill, V-block fixture",
-      "confidence": "medium"
+      "description": "Mocowanie w pryzmie na Ø40. Frezować rowek wpustowy 8P9 x 28, głębokość t=4, na czopie Ø30k6.",
+      "comment": "Głębokość rowka odczytana z rysunku jako t=4 - proszę zweryfikować."
     },
     {
       "no": 5,
-      "name": "Grinding - bearing seats",
+      "name": "Szlifowanie czopów łożyskowych",
       "machine_id": "0302",
       "alternative_machine_ids": [],
-      "group_note": "0301 – surface grinder, cannot grind shafts",
-      "description": "Between centres: grind Ø25h6 and Ø30k6 bearing seats to size, Ra 1.6.",
       "setup_time_min": 25,
       "unit_time_min": 5.0,
-      "tools": "Grinding wheel, micrometers 0-25 / 25-50 mm",
-      "confidence": "medium"
+      "description": "W kłach: szlifować czopy Ø25h6 i Ø30k6 na wymiar, Ra 1,6.",
+      "comment": "0301 pominięta - szlifierka do płaszczyzn, nie szlifuje wałków."
     },
     {
       "no": 6,
-      "name": "Deburring",
+      "name": "Gratowanie",
       "machine_id": "1501",
       "alternative_machine_ids": ["1502", "1503"],
-      "description": "Remove burrs from the keyway edges and chamfers, break sharp edges 0.3 max, clean the part.",
       "setup_time_min": 5,
       "unit_time_min": 1.5,
-      "tools": "Deburring tool, abrasive pad",
-      "confidence": "high"
+      "description": "Usunąć zadziory z krawędzi rowka i fazek, stępić ostre krawędzie maks. 0,3, oczyścić detal.",
+      "comment": null
     },
     {
       "no": 7,
-      "name": "Final inspection",
+      "name": "Kontrola końcowa",
       "machine_id": "1301",
       "alternative_machine_ids": ["1302"],
-      "description": "Check Ø25h6, Ø30k6, keyway width 8P9 and depth, overall length 180 ±0.1, Ra 1.6 on bearing seats. First piece 100%, then sampling 1/10. Record results in the inspection report.",
       "setup_time_min": 15,
       "unit_time_min": 3.5,
-      "tools": "Micrometers 0-25 / 25-50 mm, keyway gauge 8P9, roughness tester",
-      "confidence": "high"
+      "description": "Sprawdzić Ø25h6, Ø30k6, rowek 8P9 (szerokość i głębokość), długość 180 ±0,1, Ra 1,6. Pierwsza sztuka 100%, dalej co 10. sztuka.",
+      "comment": "Mikrometry 0-25 / 25-50, sprawdzian 8P9, chropowatościomierz."
     }
   ],
-  "general_notes": "[MOCK RESPONSE] Stepped shaft Ø25h6 / Ø40 / Ø30k6, overall length 180 mm, material C45 according to the title block. Assumed stock: round bar Ø45. Bearing seats h6/k6 with Ra 1.6 are finished on the shaft grinder 0302 (0.2 mm allowance left in turning) - if fine turning is sufficient for the customer, operation 5 can be removed. Both turning set-ups are on the same CNC lathe 0502 to keep one programme owner. Keyway milled on the small CNC mill 0402. There is no washing station in the machine list; cleaning is included in deburring. Keyway depth read as t=4 mm - please verify. Heat treatment is not specified on the drawing. Times estimated for a batch of 50 pcs."
+  "material": {
+    "grade": "C45 (1.0503)",
+    "stock": "Pręt okrągły Ø45 x 184 mm",
+    "system_material_id": null
+  },
+  "dimensions": {
+    "part": { "length_mm": 180, "diameter_mm": 40, "width_mm": null, "height_mm": null },
+    "stock": { "form": "round_bar", "size_mm": 45, "length_mm": 184 }
+  },
+  "general_notes": "[ODPOWIEDŹ MOCK] Wałek stopniowany Ø25h6 / Ø40 / Ø30k6, L=180, materiał C45 wg tabliczki. Czopy h6/k6 z Ra 1,6 wykańczane szlifowaniem (naddatek 0,2 mm) - jeśli toczenie wykańczające wystarcza, op. 5 można usunąć. Obróbka cieplna nie jest określona na rysunku."
 }

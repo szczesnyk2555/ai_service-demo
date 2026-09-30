@@ -62,8 +62,8 @@ public sealed class JobWorker(JobQueue queue, IServiceScopeFactory scopes, ILogg
 
         // One structured log line per job. Never includes the API key or the drawing.
         log.LogInformation(
-            "Job {JobId} {Status}: model={Model} mock={Mock} durationMs={DurationMs} tokens in/out/total={InputTokens}/{OutputTokens}/{TotalTokens} part={PartNumber} errorKind={ErrorKind}",
-            job.Id, job.Status, job.Model, job.Mock, job.DurationMs, job.InputTokens, job.OutputTokens, job.TotalTokens, job.PartNumber, job.ErrorKind);
+            "Job {JobId} {Status}: model={Model} mock={Mock} durationMs={DurationMs} tokens in/out/total={InputTokens}/{OutputTokens}/{TotalTokens} element={ElementId} errorKind={ErrorKind}",
+            job.Id, job.Status, job.Model, job.Mock, job.DurationMs, job.InputTokens, job.OutputTokens, job.TotalTokens, job.ElementId, job.ErrorKind);
     }
 
     /// <summary>Jobs that were queued or running when the app stopped are picked up again.</summary>

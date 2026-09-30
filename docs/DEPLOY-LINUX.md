@@ -41,8 +41,8 @@ Instalator:
 
 ## 4. Sprawdź
 
-- W przeglądarce: `http://<adres-serwera>:5080`. Interfejs jest po polsku, domyślnie w **trybie mock**.
-- Szybki test bez przeglądarki: `curl http://localhost:5080/api/info`.
+- W przeglądarce: `http://<adres-serwera>:5080/desktop/` (symulacja aplikacji desktop) i `http://<adres-serwera>:5080/` (panel serwisu). Domyślnie **tryb mock**.
+- Szybki test bez przeglądarki: `curl http://localhost:5080/api/v1/system-prompts`.
 - Status i logi: `systemctl status prodvisor-ai`, `journalctl -u prodvisor-ai -f`.
 - Logi zadań aplikacji: `/opt/prodvisor-ai/App_Data/logs/`.
 
@@ -59,7 +59,7 @@ Twojego projektu OpenAI.
 Wszystko poniżej ustawia się w pliku `/opt/prodvisor-ai/appsettings.Production.json`. Ponowna instalacja nie nadpisuje tego pliku.
 Po zmianie: `sudo systemctl restart prodvisor-ai`.
 
-**Klucz OpenAI.** Wpisz go w aplikacji: *Ustawienia → Klucz API → Testuj połączenie*, potem wyłącz tryb mock.
+**Klucz OpenAI.** Wpisz go w aplikacji: panel serwisu (`/`) → *Ustawienia → Klucz API → Testuj połączenie*, potem wyłącz tryb mock.
 Na Linuksie klucz jest szyfrowany przez ASP.NET Data Protection (klucze w `App_Data/keys`, katalog dostępny tylko
 dla użytkownika `prodvisor`). Klucza z instalacji Windows nie da się przenieść – trzeba go wpisać ponownie.
 

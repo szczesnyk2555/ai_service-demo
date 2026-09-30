@@ -3,66 +3,25 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>PRODVISOR AI – Technology Generator (Demo)</title>
-  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%23e8850c'/%3E%3Ctext x='16' y='22' font-family='Arial' font-weight='700' font-size='15' text-anchor='middle' fill='white'%3EPV%3C/text%3E%3C/svg%3E">
-  <link rel="stylesheet" href="styles.css">
+  <title>PRODVISOR AI – Serwis</title>
+  <link rel="stylesheet" href="/styles.css">
 </head>
 <body>
-  <!-- No build step and no external dependencies: works offline during presentations. -->
-  <div class="app">
-    <aside class="sidebar">
-      <div class="brand">
-        <div class="logo">PV</div>
-        <div>
-          <div class="brand-name">PRODVISOR <span>AI</span></div>
-          <div class="brand-sub" data-i18n="brand.sub">Technology Generator</div>
-        </div>
-      </div>
-      <nav class="nav">
-        <a href="#/generate" data-route="generate">
-          <svg viewBox="0 0 24 24"><path d="M12 3l1.9 4.6L18.5 9.5l-4.6 1.9L12 16l-1.9-4.6L5.5 9.5l4.6-1.9z"/><path d="M19 15l.9 2.1L22 18l-2.1.9L19 21l-.9-2.1L16 18l2.1-.9z"/></svg>
-          <span data-i18n="nav.generate">Generate</span></a>
-        <a href="#/history" data-route="history">
-          <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>
-          <span data-i18n="nav.history">History</span></a>
-        <a href="#/machines" data-route="machines">
-          <svg viewBox="0 0 24 24"><rect x="3" y="11" width="18" height="9" rx="1.5"/><path d="M7 11V6h6v5M13 8h4l2 3"/><circle cx="8" cy="15.5" r="1.5"/></svg>
-          <span data-i18n="nav.machines">Machines</span></a>
-        <a href="#/materials" data-route="materials">
-          <svg viewBox="0 0 24 24"><rect x="3" y="9" width="18" height="6" rx="1"/><path d="M6 9V6h12v3M6 15v3h12v-3"/></svg>
-          <span data-i18n="nav.materials">Materials</span></a>
-        <a href="#/prompts" data-route="prompts">
-          <svg viewBox="0 0 24 24"><path d="M4 5h16v11H9l-5 4z"/><path d="M8 9h8M8 12h5"/></svg>
-          <span data-i18n="nav.prompts">Prompts</span></a>
-        <a href="#/settings" data-route="settings">
-          <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M4.2 4.2l2.1 2.1M17.7 17.7l2.1 2.1M2 12h3M19 12h3M4.2 19.8l2.1-2.1M17.7 6.3l2.1-2.1"/></svg>
-          <span data-i18n="nav.settings">Settings</span></a>
-      </nav>
-      <div class="sidebar-foot">
-        <span class="demo-tag">DEMO</span>
-        <span data-i18n="sidebar.demo">Demo / proof of concept</span>
-        <span id="version" class="muted"></span>
-      </div>
-    </aside>
-
-    <div class="main">
-      <header class="topbar">
-        <div class="app-title" data-i18n="app.title">PRODVISOR AI – Technology Generator (Demo)</div>
-        <div class="topbar-right">
-          <a href="#/settings" id="mode-pill" class="pill"></a>
-          <div class="lang-switch" role="group" aria-label="Language">
-            <button type="button" data-lang="en">EN</button>
-            <button type="button" data-lang="pl">PL</button>
-          </div>
-        </div>
-      </header>
-      <main id="view" class="view"></main>
+  <header class="topbar">
+    <div class="brand">PRODVISOR <span>AI</span></div>
+    <nav>
+      <a href="#/zapytania">Zapytania</a>
+      <a href="#/profile">Profile (system prompt)</a>
+      <a href="#/maszyny">Maszyny</a>
+      <a href="#/ustawienia">Ustawienia</a>
+      <a href="#/api">API</a>
+    </nav>
+    <div class="right">
+      <a href="#/ustawienia" id="mode" class="badge"></a>
+      <a class="link" href="/desktop/">Aplikacja desktop (symulacja) →</a>
     </div>
-  </div>
-
-  <div id="toasts" class="toasts" aria-live="polite"></div>
-
-  <script src="i18n.js"></script>
-  <script src="app.js"></script>
+  </header>
+  <main class="page" id="view"></main>
+  <script src="admin.js"></script>
 </body>
 </html>

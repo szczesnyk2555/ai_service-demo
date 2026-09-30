@@ -1,29 +1,36 @@
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Nodes;
+using System.Text.Json.Serialization;
 using ProdvisorAi.Demo.Data;
 
 namespace ProdvisorAi.Demo.Services;
 
-/// <param name="DrawingText">Exact dimensions and texts extracted from a DXF (null for images / PDFs).</param>
-public sealed record PartMetadata(string? PartNumber, string? Material, int? BatchSize, string DrawingFileName, string? DrawingText = null);
+/// <summary>Element data read from PRODVISOR by element_id.</summary>
+public sealed record ElementData(string? ElementId, string? Number, string? Name, string? Material, int? Quantity, string DrawingFileName, string? DrawingText);
 
 public sealed record DrawingInput(byte[] Bytes, string ContentType, string FileName);
 
 /// <summary>
 /// Builds the body for POST /v1/responses:
-///   input[0]  developer message  = system prompt
-///   input[1]  user message       = input_text (technology prompt + part data + machines as JSON)
-///                                + input_image (PNG/JPG) or input_file (PDF)
-///   text.format                  = JSON Schema with strict: true (machine_id enum built from the DB)
+///   developer message = system prompt (profile chosen by the client)
+///   user message      = input_text (technology prompt + element + machines + groups + materials) + drawing
+///   text.format       = JSON Schema, strict: machine ids are an enum of the active machines
 /// </summary>
 public static class TechnologyRequestBuilder
 {
     public const string SchemaName = "production_technology";
 
+    static readonly JsonSerializerOptions Compact = new()
+    {
+        WriteIndented = true,
+        DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
+        Encoder = System.Text.Encodings.Web.JavaScriptEncoder.UnsafeRelaxedJsonEscaping,
+    };
+
     public static JsonObject Build(
-        string model, string systemPrompt, string technologyPrompt, PartMetadata part,
-        IReadOnlyList<Machine> activeMachines, IReadOnlyList<ProdvisorMaterial> materials, DrawingInput drawing, string language,
+        string model, string systemPrompt, string technologyPrompt, ElementData element,
+        IReadOnlyList<Machine> machines, IReadOnlyList<ProdvisorMaterial> materials, DrawingInput drawing,
         int maxOutputTokens, string? reasoningEffort)
     {
         var body = new JsonObject
@@ -31,17 +38,13 @@ public static class TechnologyRequestBuilder
             ["model"] = model,
             ["input"] = new JsonArray
             {
-                new JsonObject
-                {
-                    ["role"] = "developer",
-                    ["content"] = systemPrompt,
-                },
+                new JsonObject { ["role"] = "developer", ["content"] = systemPrompt },
                 new JsonObject
                 {
                     ["role"] = "user",
                     ["content"] = new JsonArray
                     {
-                        new JsonObject { ["type"] = "input_text", ["text"] = BuildUserText(technologyPrompt, part, activeMachines, materials, language) },
+                        new JsonObject { ["type"] = "input_text", ["text"] = BuildUserText(technologyPrompt, element, machines, materials) },
                         BuildDrawingPart(drawing),
                     },
                 },
@@ -53,190 +56,154 @@ public static class TechnologyRequestBuilder
                     ["type"] = "json_schema",
                     ["name"] = SchemaName,
                     ["strict"] = true,
-                    ["schema"] = BuildSchema(activeMachines.Select(m => m.Id)),
+                    ["schema"] = BuildSchema(machines.Select(m => m.Id)),
                 },
             },
             ["max_output_tokens"] = maxOutputTokens,
-            // Drawings are customer IP - do not keep the response stored on the OpenAI side.
-            ["store"] = false,
+            ["store"] = false,   // drawings are customer IP - nothing is kept on the OpenAI side
         };
-
         if (!string.IsNullOrWhiteSpace(reasoningEffort))
             body["reasoning"] = new JsonObject { ["effort"] = reasoningEffort };
-
         return body;
     }
 
-    /// <summary>
-    /// The JSON Schema for the answer. The root must be an object, so the operations array is wrapped.
-    /// machine_id is an enum of the customer's ACTIVE machines, regenerated for every request, so with
-    /// strict mode the model physically cannot return a machine the customer does not have.
-    /// </summary>
+    /// <summary>Answer format. machine ids are an enum of the active machines, so the model cannot return others.</summary>
     public static JsonObject BuildSchema(IEnumerable<string> machineIds)
     {
         var ids = new JsonArray();
         foreach (var id in machineIds) ids.Add(id);
 
-        return new JsonObject
+        static JsonObject T(params string[] types) => types.Length == 1
+            ? new JsonObject { ["type"] = types[0] }
+            : new JsonObject { ["type"] = new JsonArray(types.Select(t => (JsonNode)t).ToArray()) };
+        static JsonObject Obj(JsonObject props) => new()
         {
             ["type"] = "object",
-            ["properties"] = new JsonObject
-            {
-                ["operations"] = new JsonObject
-                {
-                    ["type"] = "array",
-                    ["items"] = new JsonObject
-                    {
-                        ["type"] = "object",
-                        ["properties"] = new JsonObject
-                        {
-                            ["no"] = new JsonObject { ["type"] = "integer" },
-                            ["name"] = new JsonObject { ["type"] = "string" },
-                            ["machine_id"] = new JsonObject { ["type"] = "string", ["enum"] = ids },
-                            ["description"] = new JsonObject { ["type"] = "string" },
-                            ["setup_time_min"] = new JsonObject { ["type"] = "number" },
-                            ["unit_time_min"] = new JsonObject { ["type"] = "number" },
-                            ["tools"] = new JsonObject { ["type"] = new JsonArray("string", "null") },
-                            ["confidence"] = new JsonObject { ["type"] = "string", ["enum"] = new JsonArray("high", "medium", "low") },
-                            ["alternative_machine_ids"] = new JsonObject { ["type"] = "array", ["items"] = new JsonObject { ["type"] = "string", ["enum"] = ids.DeepClone() } },
-                            ["group_note"] = new JsonObject { ["type"] = "string" },
-                        },
-                        ["required"] = new JsonArray("no", "name", "machine_id", "description", "setup_time_min", "unit_time_min", "tools", "confidence", "alternative_machine_ids", "group_note"),
-                        ["additionalProperties"] = false,
-                    },
-                },
-                ["material"] = new JsonObject
-                {
-                    ["type"] = "object",
-                    ["properties"] = new JsonObject
-                    {
-                        ["grade"] = new JsonObject { ["type"] = new JsonArray("string", "null") },
-                        ["stock"] = new JsonObject { ["type"] = new JsonArray("string", "null") },
-                        ["heat_treatment"] = new JsonObject { ["type"] = new JsonArray("string", "null") },
-                        ["source"] = new JsonObject { ["type"] = "string", ["enum"] = new JsonArray("drawing", "user", "assumed", "unknown") },
-                        ["stock_form"] = new JsonObject { ["type"] = "string", ["enum"] = new JsonArray("round_bar", "hex_bar", "square_bar", "flat_bar", "plate", "tube", "profile", "other") },
-                        ["stock_size_mm"] = new JsonObject { ["type"] = new JsonArray("number", "null") },
-                        ["stock_length_mm"] = new JsonObject { ["type"] = new JsonArray("number", "null") },
-                        ["system_material_id"] = new JsonObject { ["type"] = new JsonArray("integer", "null") },
-                        ["system_material_reason"] = new JsonObject { ["type"] = "string" },
-                    },
-                    ["required"] = new JsonArray("grade", "stock", "heat_treatment", "source", "stock_form", "stock_size_mm", "stock_length_mm",
-                        "system_material_id", "system_material_reason"),
-                    ["additionalProperties"] = false,
-                },
-                ["general_notes"] = new JsonObject { ["type"] = "string" },
-            },
-            ["required"] = new JsonArray("material", "operations", "general_notes"),
+            ["properties"] = props,
+            ["required"] = new JsonArray(props.Select(p => (JsonNode)p.Key).ToArray()),
             ["additionalProperties"] = false,
         };
+
+        return Obj(new JsonObject
+        {
+            ["operations"] = new JsonObject
+            {
+                ["type"] = "array",
+                ["items"] = Obj(new JsonObject
+                {
+                    ["no"] = T("integer"),
+                    ["name"] = T("string"),
+                    ["machine_id"] = new JsonObject { ["type"] = "string", ["enum"] = ids },
+                    ["alternative_machine_ids"] = new JsonObject { ["type"] = "array", ["items"] = new JsonObject { ["type"] = "string", ["enum"] = ids.DeepClone() } },
+                    ["setup_time_min"] = T("number"),
+                    ["unit_time_min"] = T("number"),
+                    ["description"] = T("string"),
+                    ["comment"] = T("string", "null"),
+                }),
+            },
+            ["material"] = Obj(new JsonObject
+            {
+                ["grade"] = T("string", "null"),
+                ["stock"] = T("string", "null"),
+                ["system_material_id"] = T("integer", "null"),
+            }),
+            ["dimensions"] = Obj(new JsonObject
+            {
+                ["part"] = Obj(new JsonObject
+                {
+                    ["length_mm"] = T("number", "null"), ["diameter_mm"] = T("number", "null"),
+                    ["width_mm"] = T("number", "null"), ["height_mm"] = T("number", "null"),
+                }),
+                ["stock"] = Obj(new JsonObject
+                {
+                    ["form"] = new JsonObject { ["type"] = "string", ["enum"] = new JsonArray("round_bar", "hex_bar", "square_bar", "flat_bar", "plate", "tube", "profile", "other") },
+                    ["size_mm"] = T("number", "null"),
+                    ["length_mm"] = T("number", "null"),
+                }),
+            }),
+            ["general_notes"] = T("string"),
+        });
     }
 
-    static string BuildUserText(string technologyPrompt, PartMetadata part, IReadOnlyList<Machine> machines,
-        IReadOnlyList<ProdvisorMaterial> materials, string language)
+    static string BuildUserText(string technologyPrompt, ElementData element, IReadOnlyList<Machine> machines, IReadOnlyList<ProdvisorMaterial> materials)
     {
-        // Parameters come from PRODVISOR (MASZYNY_PARAMETRY): working ranges, axes, spindle speed, cutting capacity...
-        var machineList = machines.Select(m => new
+        static string Or(string? v) => string.IsNullOrWhiteSpace(v) ? "brak danych (odczytaj z rysunku, jeśli widoczne)" : v;
+        var sb = new StringBuilder();
+
+        sb.AppendLine("## Instrukcje technologiczne (zasady firmowe)");
+        sb.AppendLine(string.IsNullOrWhiteSpace(technologyPrompt) ? "(brak)" : technologyPrompt.Trim());
+        sb.AppendLine();
+
+        sb.AppendLine("## Element");
+        sb.AppendLine($"- Numer: {Or(element.Number)}");
+        sb.AppendLine($"- Nazwa: {Or(element.Name)}");
+        sb.AppendLine($"- Materiał: {Or(element.Material)}");
+        sb.AppendLine($"- Ilość (partia): {(element.Quantity is > 0 ? $"{element.Quantity} szt." : "brak danych")}");
+        sb.AppendLine();
+
+        if (!string.IsNullOrWhiteSpace(element.DrawingText))
+        {
+            sb.AppendLine("## Dane odczytane z pliku DXF (DOKŁADNE - mają pierwszeństwo przed odczytem z obrazu)");
+            sb.AppendLine(element.DrawingText.Trim());
+            sb.AppendLine();
+        }
+
+        // Machines: only what the model needs to decide (no costs, no database ids).
+        sb.AppendLine("## Maszyny (używaj WYŁĄCZNIE tych machine_id)");
+        sb.AppendLine("cooperation = true to usługi zewnętrzne (obróbka cieplna, powłoki, cięcie...) - tylko do prac, których nie da się wykonać na miejscu;");
+        sb.AppendLine("dla nich TPZ/TJ = czas obsługi wewnętrznej. Sprawdzaj parametry maszyn (stół, przesuwy, średnice, zakres cięcia).");
+        sb.AppendLine(JsonSerializer.Serialize(machines.Select(m => new
         {
             machine_id = m.Id,
             name = m.Name,
             type = m.Type,
-            external_cooperation = m.IsVirtual ? true : (bool?)null,
-            workplace_id = m.WorkplaceId,
-            workplace_group = m.GroupName,       // STANOWISKO_NAZWA - machines with the same name form a group
-            hall = m.Hall,
-            multi_operation = m.MultiOperation ? true : (bool?)null,
-            capabilities = string.IsNullOrWhiteSpace(m.Description) ? null : m.Description,
+            group = m.IsVirtual ? null : m.GroupName,
+            cooperation = m.IsVirtual ? true : (bool?)null,
             parameters = m.ParametersJson is null ? null
                 : JsonSerializer.Deserialize<List<Prodvisor.MachineParameter>>(m.ParametersJson)!.Select(p => $"{p.Name}: {p.Value}").ToList(),
-        });
-
-        static string OrUnknown(string? v) => string.IsNullOrWhiteSpace(v) ? "not provided (read from drawing if visible)" : v;
-
-        var sb = new StringBuilder();
-        sb.AppendLine("## Technology instructions");
-        sb.AppendLine(technologyPrompt.Trim());
-        sb.AppendLine();
-        sb.AppendLine("## Part data");
-        sb.AppendLine($"- Part number: {OrUnknown(part.PartNumber)}");
-        sb.AppendLine($"- Material: {OrUnknown(part.Material)}");
-        sb.AppendLine($"- Batch size: {(part.BatchSize is > 0 ? $"{part.BatchSize} pcs" : "not provided")}");
-        sb.AppendLine($"- Drawing file: {part.DrawingFileName}");
-        sb.AppendLine();
-        if (!string.IsNullOrWhiteSpace(part.DrawingText))
-        {
-            sb.AppendLine("## Data extracted from the DXF file");
-            sb.AppendLine("The attached image was rendered from a DXF CAD file. The values below were read directly from the file and are EXACT -");
-            sb.AppendLine("prefer them over reading numbers from the image. Use the image for geometry and context.");
-            sb.AppendLine(part.DrawingText.Trim());
-            sb.AppendLine();
-        }
-        sb.AppendLine("## Available machines (use ONLY these machine_id values)");
-        sb.AppendLine("Machines with external_cooperation = true are external services (heat treatment, coatings, cutting...). Use them only for");
-        sb.AppendLine("work the in-house machines cannot do; for them setup_time_min / unit_time_min = internal handling time, lead time goes to the description.");
-        sb.AppendLine("Respect machine parameters (table size, travels, turning diameter/length, cutting capacity) when choosing a machine.");
-        sb.AppendLine(JsonSerializer.Serialize(machineList, new JsonSerializerOptions { WriteIndented = true, DefaultIgnoreCondition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull, Encoder = System.Text.Encodings.Web.JavaScriptEncoder.UnsafeRelaxedJsonEscaping }));
+        }), Compact));
         sb.AppendLine();
 
-        // Machine groups = PRODVISOR workplace names (STANOWISKO -> STANOWISKO_NAZWA): same name = same group.
+        // Groups = PRODVISOR workplace names (STANOWISKO_NAZWA). The model decides whether a group can be used.
         var groups = machines.Where(m => !m.IsVirtual && m.GroupName is not null)
             .GroupBy(m => m.GroupName!).Where(g => g.Count() > 1).OrderBy(g => g.Key).ToList();
         if (groups.Count > 0)
         {
-            sb.AppendLine("## Machine groups (PRODVISOR workplace names - all machines with the same workplace name form one group)");
+            sb.AppendLine("## Grupy maszyn (maszyny o tej samej nazwie stanowiska)");
             foreach (var g in groups) sb.AppendLine($"- {g.Key}: {string.Join(", ", g.Select(m => m.Id))}");
-            sb.AppendLine("YOU decide for every operation whether it can run on a machine group:");
-            sb.AppendLine("- put the best machine in machine_id;");
-            sb.AppendLine("- check EVERY other member of its group against this part (size, travels, axes, spindle speed, capacity, tolerances):");
-            sb.AppendLine("  all members fit -> list them all in alternative_machine_ids; only some fit -> list only those;");
-            sb.AppendLine("  none fits or the operation needs exactly this machine -> leave alternative_machine_ids empty (single machine);");
-            sb.AppendLine("- the production planner then picks a free machine from machine_id + alternative_machine_ids;");
-            sb.AppendLine("- machines outside the group only if they clearly fit; never repeat machine_id in alternative_machine_ids.");
-            sb.AppendLine("- exclude a group member ONLY for technical reasons (it cannot make this part: size, travels, axes, capacity, accuracy).");
-            sb.AppendLine("  Hourly cost, utilisation or preference are NOT reasons - choosing the cheapest free machine is the planner's job;");
-            sb.AppendLine("- group_note: for every group member you left out, one short technical reason (e.g. \"0407 – stół 910 mm za krótki na detal 1000 mm\");");
-            sb.AppendLine("  empty string when the whole group is used or the machine has no group.");
+            sb.AppendLine("Dla każdej operacji: machine_id = najlepsza maszyna. Sprawdź każdą inną maszynę z jej grupy względem tego elementu");
+            sb.AppendLine("(wymiary, przesuwy, osie, obroty, zakres, dokładność): pasują wszystkie -> wpisz je w alternative_machine_ids; pasują niektóre -> tylko te;");
+            sb.AppendLine("żadna / operacja wymaga tej jednej maszyny -> pusta lista. Wykluczaj TYLKO z powodów technicznych (koszt i obłożenie to sprawa planisty).");
+            sb.AppendLine("Pominięte maszyny z grupy wymień z krótkim powodem w comment operacji. Nigdy nie powtarzaj machine_id w alternative_machine_ids.");
+            sb.AppendLine();
         }
 
-        sb.AppendLine();
-        sb.AppendLine("Fill \"material\" separately: grade = material designation as written on the drawing (title block / notes),");
-        sb.AppendLine("stock = raw material form and size you plan (e.g. round bar diameter x length), heat_treatment = as on the drawing or null.");
-        sb.AppendLine("source = \"drawing\" if read from the drawing, \"user\" if only given in the part data, \"assumed\" if you had to assume it, \"unknown\" otherwise.");
-        sb.AppendLine("stock_form / stock_size_mm / stock_length_mm = the raw material you plan to use (e.g. round_bar, 45, 184): size = bar diameter,");
-        sb.AppendLine("hex across flats or plate thickness incl. machining allowance. The stock is matched against the company material list.");
-        sb.AppendLine("If the material in the part data differs from the drawing, keep the drawing value and explain the conflict in general_notes.");
-        sb.AppendLine();
-
-        // The company material list: the model picks the stock item (names in the ERP differ from drawing designations).
-        sb.AppendLine("## Company material list (PRODVISOR, format: ID | name)");
-        sb.AppendLine("Choose material.system_material_id from this list for the stock you plan:");
-        sb.AppendLine("- Match the GRADE, also through equivalent designations (EN / PN / DIN W.Nr / AISI / trade names, e.g. C45 = 1.0503 = \"STAL 45\",");
-        sb.AppendLine("  42CrMo4 = 40HM = 40HMT, S355J2 = 18G2A, S235JR = St3S, 1.2379 = NC11LV = D2, EN AW-2017 = PA6, 1.4301 = 304), ignoring typos and formatting.");
-        sb.AppendLine("- Then the FORM (pręt = round bar, sześciokąt = hex, blacha = plate, płaskownik = flat bar, profil/rura...) and SIZE:");
-        sb.AppendLine("  the item must be at least your stock_size_mm; prefer the smallest sufficient one. A generic item without size (e.g. \"Stal 1,2311\") is acceptable if no sized item fits.");
-        sb.AppendLine("- Avoid customer-supplied / test items (\"materiał klienta\", \"powierzony\", \"test\") unless the drawing says the material is supplied by the customer.");
-        sb.AppendLine("- If nothing in the list is the right grade: system_material_id = null and say in system_material_reason that the material is not in the system.");
-        sb.AppendLine("- system_material_reason: one short sentence (why this item, e.g. \"C45 = 1.0503, pręt Ø50 ≥ Ø45\", or why none).");
+        sb.AppendLine("## Materiał i wymiary");
+        sb.AppendLine("material.grade = gatunek z rysunku (tabliczka / uwagi); material.stock = planowany półfabrykat (np. \"Pręt okrągły Ø45 x 184 mm\").");
+        sb.AppendLine("dimensions.part = gabaryty gotowego elementu z rysunku (null, jeśli nie dotyczy); dimensions.stock = forma i wymiar półfabrykatu z naddatkiem.");
+        sb.AppendLine("material.system_material_id = ID z listy poniżej dla planowanego półfabrykatu:");
+        sb.AppendLine("- dopasuj GATUNEK także przez oznaczenia zamienne (EN / PN / W.Nr / AISI / nazwy handlowe, np. C45 = 1.0503 = STAL 45,");
+        sb.AppendLine("  42CrMo4 = 40HM, S355J2 = 18G2A, S235JR = St3S, 1.2379 = NC11LV, EN AW-2017 = PA6, 1.4301 = 304), ignoruj literówki;");
+        sb.AppendLine("- potem FORMĘ i WYMIAR: pozycja co najmniej tak duża jak półfabrykat, najmniejsza wystarczająca; pozycja bez wymiaru, jeśli brak lepszej;");
+        sb.AppendLine("- pomijaj materiały klienta / powierzone / testowe; brak właściwego gatunku -> null i informacja w general_notes.");
+        sb.AppendLine("Lista materiałów (ID | nazwa):");
         foreach (var m in materials.Where(m => m.Active).OrderBy(m => m.Name))
             sb.Append(m.Id).Append(" | ").AppendLine(m.Name);
         sb.AppendLine();
 
-        sb.AppendLine("Prepare the draft production technology for the part on the attached drawing.");
-        sb.AppendLine(language == "pl"
-            ? "Write all text fields (name, description, tools, general_notes, material.stock, material.heat_treatment, material.system_material_reason, group_note) in Polish."
-            : "Write all text fields (name, description, tools, general_notes, material.stock, material.heat_treatment, material.system_material_reason, group_note) in English.");
+        sb.AppendLine("Przygotuj projekt technologii dla elementu z załączonego rysunku. Wszystkie pola tekstowe pisz po polsku.");
         return sb.ToString();
     }
 
     static JsonObject BuildDrawingPart(DrawingInput drawing)
     {
         var dataUrl = $"data:{drawing.ContentType};base64,{Convert.ToBase64String(drawing.Bytes)}";
-
         return drawing.ContentType == "application/pdf"
             ? new JsonObject { ["type"] = "input_file", ["filename"] = drawing.FileName, ["file_data"] = dataUrl }
             : new JsonObject { ["type"] = "input_image", ["image_url"] = dataUrl, ["detail"] = "high" };
     }
 
-    /// <summary>Copy of the request for the Debug panel with the (large) base64 payload removed.</summary>
+    /// <summary>Copy of the request for the debug log with the (large) base64 payload removed.</summary>
     public static JsonNode Redact(JsonObject body)
     {
         var copy = JsonNode.Parse(body.ToJsonString())!;
@@ -244,11 +211,9 @@ public static class TechnologyRequestBuilder
         {
             if (message?["content"] is not JsonArray parts) continue;
             foreach (var part in parts.OfType<JsonObject>())
-            {
                 foreach (var field in new[] { "image_url", "file_data" })
                     if (part[field]?.GetValue<string>() is { } data)
                         part[field] = $"<base64 omitted, {data.Length} chars>";
-            }
         }
         return copy;
     }

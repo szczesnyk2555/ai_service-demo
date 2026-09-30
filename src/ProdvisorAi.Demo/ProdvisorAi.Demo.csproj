@@ -25,9 +25,7 @@
        The canned mock responses are embedded; the sample drawing is copied next to the executable
        so the UI can offer a "use sample drawing" button. -->
   <ItemGroup>
-    <EmbeddedResource Include="..\..\samples\sample-mock-response.json" LogicalName="MockResponse.en.json" />
-    <!-- WithCulture=false: otherwise MSBuild treats ".pl." as a culture and moves the file to a satellite assembly -->
-    <EmbeddedResource Include="..\..\samples\sample-mock-response.pl.json" LogicalName="MockResponse.pl.json" WithCulture="false" />
+    <EmbeddedResource Include="..\..\samples\sample-mock-response.json" LogicalName="MockResponse.json" />
     <!-- PRODVISOR master data snapshot (MASZYNY*, MaterialsKind): used when no database connection is configured -->
     <EmbeddedResource Include="..\..\samples\prodvisor-snapshot.json" LogicalName="ProdvisorSnapshot.json" />
     <EmbeddedResource Include="..\..\samples\prodvisor-snapshot-materials.json" LogicalName="ProdvisorSnapshotMaterials.json" />

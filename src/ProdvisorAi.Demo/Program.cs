@@ -97,10 +97,9 @@ using (var scope = app.Services.CreateScope())
 app.UseDefaultFiles();
 app.UseStaticFiles();
 
-app.MapSettingsEndpoints();
-app.MapMachineEndpoints();
-app.MapPromptEndpoints();
-app.MapJobEndpoints();
+app.MapTechnologyApiEndpoints();   // API for the desktop application
+app.MapAdminEndpoints();           // service administration (/)
+app.MapDesktopSimEndpoints();      // simulated desktop application data (/desktop/)
 
 app.Logger.LogInformation("PRODVISOR AI demo started. Data directory: {DataDir}", dataDir);
 app.Run();

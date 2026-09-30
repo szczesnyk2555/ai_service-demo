@@ -25,6 +25,10 @@ public static class SchemaUpgrade
         ("Machines", "MultiOperation", "INTEGER NOT NULL DEFAULT 0"),
         ("Machines", "Multiperson", "INTEGER NOT NULL DEFAULT 0"),
         ("Machines", "WorkplacesGroup", "INTEGER NULL"),
+        ("Jobs", "ElementId", "TEXT NULL"),
+        ("Jobs", "TechnologyPrompt", "TEXT NULL"),
+        ("Jobs", "SystemPromptId", "TEXT NULL"),
+        ("Jobs", "PartName", "TEXT NULL"),
     ];
 
     public static void Apply(AppDbContext db)
@@ -36,6 +40,21 @@ public static class SchemaUpgrade
                 "Name" TEXT NOT NULL,
                 "AlloyId" INTEGER NULL,
                 "Active" INTEGER NOT NULL)
+            """);
+        db.Database.ExecuteSqlRaw("""
+            CREATE TABLE IF NOT EXISTS "SystemPrompts" (
+                "Id" TEXT NOT NULL CONSTRAINT "PK_SystemPrompts" PRIMARY KEY,
+                "Name" TEXT NOT NULL, "Text" TEXT NOT NULL, "IsDefault" INTEGER NOT NULL, "UpdatedAt" TEXT NOT NULL)
+            """);
+        db.Database.ExecuteSqlRaw("""
+            CREATE TABLE IF NOT EXISTS "Elements" (
+                "Id" TEXT NOT NULL CONSTRAINT "PK_Elements" PRIMARY KEY,
+                "Number" TEXT NOT NULL, "Name" TEXT NOT NULL, "Material" TEXT NULL, "Quantity" INTEGER NULL, "DrawingFile" TEXT NOT NULL)
+            """);
+        db.Database.ExecuteSqlRaw("""
+            CREATE TABLE IF NOT EXISTS "SavedTechnologies" (
+                "ElementId" TEXT NOT NULL CONSTRAINT "PK_SavedTechnologies" PRIMARY KEY,
+                "JobId" TEXT NOT NULL, "SavedAt" TEXT NOT NULL, "Json" TEXT NOT NULL)
             """);
 
         foreach (var (table, column, type) in AddedColumns)

@@ -5,21 +5,20 @@ using ProdvisorAi.Demo.Models;
 namespace ProdvisorAi.Demo.Services;
 
 /// <summary>
-/// Returns a realistic canned technology (samples/sample-mock-response*.json, embedded in the assembly)
+/// Returns a realistic canned technology (samples/sample-mock-response.json, embedded in the assembly)
 /// after a short delay, so the demo works without network, API key or credit.
 /// </summary>
 public sealed class MockTechnologyProvider(IConfiguration config)
 {
-    public async Task<(TechnologyResult Result, string RawJson)> GenerateAsync(
-        IReadOnlyList<Machine> activeMachines, string language, CancellationToken ct)
+    public async Task<(TechnologyResult Result, string RawJson)> GenerateAsync(IReadOnlyList<Machine> activeMachines, CancellationToken ct)
     {
         await Task.Delay(TimeSpan.FromSeconds(config.GetValue("Demo:MockDelaySeconds", 3.0)), ct);
 
-        var raw = ReadResource(language == "pl" ? "MockResponse.pl.json" : "MockResponse.en.json");
+        var raw = ReadResource("MockResponse.json");
         var result = ResponseParser.Deserialize(raw);
 
-        // The canned answer references the seeded machines. If the customer has deactivated a machine, use another
-        // active machine of the same type, or drop the operation (like the real model, which only sees active machines).
+        // The canned answer references the seeded machines. If a machine was deactivated, use another active machine
+        // of the same type, or drop the operation (like the real model, which only sees active machines).
         var ops = result.Operations
             .Select(op => op with
             {

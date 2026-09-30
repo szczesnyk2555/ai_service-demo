@@ -8,8 +8,8 @@ using ProdvisorAi.Demo.Prodvisor;
 namespace ProdvisorAi.Demo.Services;
 
 /// <summary>
-/// Runs one generation job: loads settings, machines, prompts and the drawing, then calls either
-/// the mock provider or the OpenAI Responses API, and stores the result on the job.
+/// Runs one generation job: machines + materials (PRODVISOR tables), system prompt profile, technology prompt,
+/// element data and drawing -> mock provider or OpenAI Responses API -> result stored on the job.
 /// </summary>
 public sealed class TechnologyGenerator(
     AppDbContext db,
@@ -28,35 +28,35 @@ public sealed class TechnologyGenerator(
         job.Mock = settings.UseMock;
 
         var machines = await db.Machines.AsNoTracking().Where(m => m.Active).OrderBy(m => m.Id).ToListAsync(ct);
-        var materials = await db.Materials.AsNoTracking().ToListAsync(ct);   // PRODVISOR MaterialsKind - the model picks the stock item
+        var materials = await db.Materials.AsNoTracking().ToListAsync(ct);
         if (machines.Count == 0)
-            throw new AiServiceException("no_machines", "There are no active machines. Add or activate machines first.");
+            throw new AiServiceException("no_machines", "Brak aktywnych maszyn.");
 
-        var lang = job.PromptLanguage;
-        var systemPrompt = (await db.Prompts.FindAsync([$"system.{lang}"], ct))?.Text ?? "";
-        var technologyPrompt = (await db.Prompts.FindAsync([$"technology.{lang}"], ct))?.Text ?? "";
+        var systemPrompt = await db.SystemPrompts.AsNoTracking().FirstOrDefaultAsync(p => p.Id == job.SystemPromptId, ct)
+            ?? await db.SystemPrompts.AsNoTracking().OrderByDescending(p => p.IsDefault).FirstAsync(ct);
+        job.SystemPromptId = systemPrompt.Id;
 
         var drawing = new DrawingInput(
             await File.ReadAllBytesAsync(paths.Resolve(job.DrawingPath), ct), job.DrawingContentType, job.DrawingFileName);
 
         var request = TechnologyRequestBuilder.Build(
-            settings.Model, systemPrompt, technologyPrompt,
-            new PartMetadata(job.PartNumber, job.Material, job.BatchSize, job.DrawingFileName, job.DrawingText),
-            machines, materials, drawing, lang,
+            settings.Model, systemPrompt.Text, job.TechnologyPrompt ?? "",
+            new ElementData(job.ElementId, job.PartNumber, job.PartName, job.Material, job.BatchSize, job.DrawingFileName, job.DrawingText),
+            machines, materials, drawing,
             maxOutputTokens: config.GetValue("OpenAI:MaxOutputTokens", 16000),
             reasoningEffort: config["OpenAI:ReasoningEffort"]);
 
-        // Stored for the Debug panel: no base64 payload, and the key is never part of the body anyway.
+        // Stored for the admin panel: no base64 payload; the key is never part of the body.
         job.DebugRequestJson = TechnologyRequestBuilder.Redact(request).ToJsonString(Indented);
 
         if (settings.UseMock)
         {
-            var (result, raw) = await mock.GenerateAsync(machines, lang, ct);
+            var (result, raw) = await mock.GenerateAsync(machines, ct);
             job.ResultJson = JsonSerializer.Serialize(SimulateMaterialChoice(result, materials));
             job.DebugResponseJson = new JsonObject
             {
                 ["mock"] = true,
-                ["note"] = settings.HasApiKey ? "Mock mode is enabled in Settings." : "No API key configured - mock mode used automatically.",
+                ["note"] = settings.HasApiKey ? "Tryb mock włączony w ustawieniach." : "Brak klucza API - użyto trybu mock.",
                 ["output_text"] = JsonNode.Parse(raw),
             }.ToJsonString(Indented);
             return;
@@ -75,32 +75,23 @@ public sealed class TechnologyGenerator(
         job.ResultJson = JsonSerializer.Serialize(ValidateMaterialChoice(technology, materials));
     }
 
-    /// <summary>
-    /// The model may only pick an ID that exists (and is active) in the PRODVISOR material list.
-    /// Anything else is dropped with an explanation - the technologist then picks from the rule-based candidates.
-    /// </summary>
+    /// <summary>The model may only pick an ID that exists (and is active) in MaterialsKind; anything else is dropped.</summary>
     static TechnologyResult ValidateMaterialChoice(TechnologyResult t, IReadOnlyList<ProdvisorMaterial> materials)
     {
-        if (t.Material is not { } m) return t;
-        if (m.SystemMaterialId is { } id && !materials.Any(x => x.Id == id && x.Active))
-            return t with { Material = m with { SystemMaterialId = null, SystemMaterialBy = null,
-                SystemMaterialReason = $"AI wskazało ID {id}, którego nie ma na liście aktywnych materiałów PRODVISOR – wybierz ręcznie. ({m.SystemMaterialReason})" } };
-        return t with { Material = m with { SystemMaterialBy = m.SystemMaterialId is null ? null : "ai" } };
+        if (t.Material is not { SystemMaterialId: { } id } m || materials.Any(x => x.Id == id && x.Active)) return t;
+        return t with
+        {
+            Material = m with { SystemMaterialId = null },
+            GeneralNotes = $"{t.GeneralNotes}\nAI wskazało materiał ID {id}, którego nie ma na liście aktywnych materiałów - wybierz ręcznie.".Trim(),
+        };
     }
 
     /// <summary>Mock mode: simulate the model's material choice with the rule-based matcher.</summary>
     static TechnologyResult SimulateMaterialChoice(TechnologyResult t, IReadOnlyList<ProdvisorMaterial> materials)
     {
         if (t.Material is not { } m) return t;
-        var match = MaterialMatcher.Match(m.Grade, m.StockForm, m.StockSizeMm, materials);
-        var best = match.Status == "matched" ? match.Candidates[0] : null;
-        return t with { Material = m with
-        {
-            SystemMaterialId = best?.Id,
-            SystemMaterialBy = best is null ? null : "ai",
-            SystemMaterialReason = best is not null
-                ? $"[MOCK] {best.Name}: {best.Reason}."
-                : $"[MOCK] Materiału {m.Grade} w wymaganej formie/wymiarze nie ma w kartotece PRODVISOR.",
-        } };
+        var stock = t.Dimensions?.Stock;
+        var match = MaterialMatcher.Match(m.Grade, stock?.Form, stock?.SizeMm, materials);
+        return t with { Material = m with { SystemMaterialId = match.Status == "matched" ? match.Candidates[0].Id : null } };
     }
 }
