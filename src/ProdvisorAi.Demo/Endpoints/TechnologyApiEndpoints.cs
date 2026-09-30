@@ -8,8 +8,7 @@ namespace ProdvisorAi.Demo.Endpoints;
 
 /// <summary>
 /// The API used by the PRODVISOR desktop application:
-///   GET  /api/v1/system-prompts          profiles to choose from when generating
-///   POST /api/v1/technology-jobs         multipart: drawing + element_id + technology_prompt [+ system_prompt_id] -> 202 { job_id }
+///   POST /api/v1/technology-jobs         multipart: drawing + element_id + technology_prompt [+ technology_prompt_name] -> 202 { job_id }
 ///   GET  /api/v1/technology-jobs/{id}    status; when done: result mapped to PRODVISOR ids (MASZYNY.ID, STANOWISKO.ID, MaterialsKind.ID)
 /// </summary>
 public static class TechnologyApiEndpoints
@@ -17,10 +16,6 @@ public static class TechnologyApiEndpoints
     public static void MapTechnologyApiEndpoints(this IEndpointRouteBuilder app)
     {
         var api = app.MapGroup("/api/v1");
-
-        api.MapGet("/system-prompts", async (AppDbContext db) =>
-            (await db.SystemPrompts.AsNoTracking().OrderByDescending(p => p.IsDefault).ThenBy(p => p.Name).ToListAsync())
-                .Select(p => new { id = p.Id, name = p.Name, is_default = p.IsDefault }));
 
         api.MapPost("/technology-jobs", async (HttpRequest request, AppDbContext db, JobQueue queue, StoragePaths paths,
             IConfiguration config, DxfDrawingConverter dxf) =>
@@ -34,9 +29,6 @@ public static class TechnologyApiEndpoints
             var element = await db.Elements.AsNoTracking().FirstOrDefaultAsync(e => e.Id == elementId);
             if (element is null) return Results.NotFound(new { error = $"Nie znaleziono elementu {elementId}." });
 
-            var systemPromptId = form["system_prompt_id"].ToString().Trim();
-            if (systemPromptId != "" && !await db.SystemPrompts.AnyAsync(p => p.Id == systemPromptId))
-                return Error($"Nieznany system_prompt_id: {systemPromptId}.");
 
             var file = form.Files.GetFile("drawing");
             if (file is null || file.Length == 0) return Error("Brak rysunku (pole drawing: PNG, JPG, PDF lub DXF).");
@@ -56,7 +48,7 @@ public static class TechnologyApiEndpoints
                 Material = element.Material,
                 BatchSize = element.Quantity,
                 TechnologyPrompt = form["technology_prompt"].ToString(),
-                SystemPromptId = systemPromptId == "" ? null : systemPromptId,
+                TechnologyPromptName = form["technology_prompt_name"].ToString().Trim() is { Length: > 0 } n ? n : null,
                 DrawingFileName = drawing.FileName,
                 DrawingContentType = drawing.ContentType,
                 DrawingText = drawing.Dxf?.ExtractedText,
@@ -131,7 +123,7 @@ public static class TechnologyApiEndpoints
             job_id = job.Id,
             status = job.Status,
             element_id = job.ElementId,
-            system_prompt_id = job.SystemPromptId,
+            technology_prompt_name = job.TechnologyPromptName,
             created_at = job.CreatedAt,
             completed_at = job.CompletedAt,
             duration_ms = job.DurationMs,

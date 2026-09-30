@@ -32,9 +32,7 @@ public sealed class TechnologyGenerator(
         if (machines.Count == 0)
             throw new AiServiceException("no_machines", "Brak aktywnych maszyn.");
 
-        var systemPrompt = await db.SystemPrompts.AsNoTracking().FirstOrDefaultAsync(p => p.Id == job.SystemPromptId, ct)
-            ?? await db.SystemPrompts.AsNoTracking().OrderByDescending(p => p.IsDefault).FirstAsync(ct);
-        job.SystemPromptId = systemPrompt.Id;
+        var systemPrompt = await db.SystemPrompts.AsNoTracking().FirstAsync(p => p.Id == SeedData.SystemPromptId, ct);
 
         var drawing = new DrawingInput(
             await File.ReadAllBytesAsync(paths.Resolve(job.DrawingPath), ct), job.DrawingContentType, job.DrawingFileName);

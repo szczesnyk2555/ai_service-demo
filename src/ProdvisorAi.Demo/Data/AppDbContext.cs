@@ -14,6 +14,7 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
     // Simulated PRODVISOR side (elements with drawings, saved technologies)
     public DbSet<ProdvisorElement> Elements => Set<ProdvisorElement>();
     public DbSet<SavedTechnology> SavedTechnologies => Set<SavedTechnology>();
+    public DbSet<TechnologyPrompt> TechnologyPrompts => Set<TechnologyPrompt>();
 
     protected override void OnModelCreating(ModelBuilder b)
     {
@@ -24,6 +25,7 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
         b.Entity<GenerationJob>(e => { e.HasKey(j => j.Id); e.HasIndex(j => j.CreatedAt); });
         b.Entity<ProdvisorElement>().HasKey(e => e.Id);
         b.Entity<SavedTechnology>().HasKey(t => t.ElementId);
+        b.Entity<TechnologyPrompt>().HasKey(p => p.Id);
     }
 
     // SQLite has no date type; timestamps are written as UTC, so mark them as UTC when read back.

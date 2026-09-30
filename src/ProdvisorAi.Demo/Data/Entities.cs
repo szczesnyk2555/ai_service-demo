@@ -39,7 +39,7 @@ public class ProdvisorMaterial
     public bool Active { get; set; } = true;     // NoActive != 1 and not a pseudo-material
 }
 
-/// <summary>System prompt profile - built into the service, selectable by the client per request.</summary>
+/// <summary>The system prompt built into the service (one row, edited in the admin panel).</summary>
 public class SystemPrompt
 {
     public string Id { get; set; } = "";         // e.g. "cnc"
@@ -74,7 +74,8 @@ public class GenerationJob
     // Request (from the desktop application)
     public string? ElementId { get; set; }
     public string? TechnologyPrompt { get; set; }
-    public string? SystemPromptId { get; set; }
+    public string? TechnologyPromptName { get; set; }  // which of the technologist's prompts was used (for the log)
+    public string? SystemPromptId { get; set; }        // unused (earlier version: selectable system prompt profiles)
     public string DrawingFileName { get; set; } = "";
     public string DrawingContentType { get; set; } = "";
     public string DrawingPath { get; set; } = "";   // relative to the data directory (for DXF: the rendered PNG)
@@ -133,4 +134,12 @@ public class SavedTechnology
     public string JobId { get; set; } = "";
     public DateTime SavedAt { get; set; } = DateTime.UtcNow;
     public string Json { get; set; } = "";       // the technology card as saved by the desktop application
+}
+
+/// <summary>Technology prompt (company rules) kept in the desktop application; the technologist picks one when generating.</summary>
+public class TechnologyPrompt
+{
+    public string Id { get; set; } = "";
+    public string Name { get; set; } = "";
+    public string Text { get; set; } = "";
 }

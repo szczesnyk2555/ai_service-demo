@@ -1,4 +1,4 @@
-// PRODVISOR AI - service administration panel (key + model, system prompt profiles, machines, request log).
+// PRODVISOR AI - service administration panel (key + model, system prompt, machines, request log).
 "use strict";
 
 const $ = (sel, root = document) => root.querySelector(sel);
@@ -39,11 +39,11 @@ async function renderJobs() {
     <section class="card">
       <div class="card-head"><h2>Zapytania z aplikacji desktop</h2><span class="spacer"></span><button class="btn small" id="reload">Odśwież</button></div>
       ${jobs.length ? `<div class="table-wrap"><table>
-        <thead><tr><th>Data</th><th>Status</th><th>Element</th><th>Profil</th><th>Model</th><th>Czas</th><th>Tokeny</th></tr></thead>
+        <thead><tr><th>Data</th><th>Status</th><th>Element</th><th>Prompt technologa</th><th>Model</th><th>Czas</th><th>Tokeny</th></tr></thead>
         <tbody>${jobs.map((j) => `
           <tr class="clickable" data-id="${esc(j.id)}">
             <td>${esc(fmtDate(j.createdAt))}</td><td>${statusBadge(j.status)} ${j.errorKind ? `<span class="small muted">${esc(j.errorKind)}</span>` : ""}</td>
-            <td><b>${esc(j.partNumber)}</b> <span class="small muted">(${esc(j.elementId)})</span></td><td>${esc(j.systemPromptId ?? "")}</td>
+            <td><b>${esc(j.partNumber)}</b> <span class="small muted">(${esc(j.elementId)})</span></td><td>${esc(j.technologyPromptName ?? "")}</td>
             <td>${esc(j.model ?? "")}${j.mock ? ' <span class="badge warn">MOCK</span>' : ""}</td>
             <td>${j.durationMs != null ? (j.durationMs / 1000).toFixed(1) + " s" : ""}</td><td>${esc(j.totalTokens ?? "")}</td>
           </tr>`).join("")}</tbody></table></div>`
@@ -62,7 +62,7 @@ async function renderJob(id) {
       <div class="card-head"><h2>Zapytanie <span class="mono small">${esc(a.job_id)}</span></h2>${statusBadge(a.status)}${a.mock ? '<span class="badge warn">MOCK</span>' : ""}</div>
       <div class="grid2">
         <div>
-          <p>Element <b class="mono">${esc(a.element_id)}</b> · profil <b>${esc(a.system_prompt_id ?? "")}</b> · model ${esc(a.model ?? "")}
+          <p>Element <b class="mono">${esc(a.element_id)}</b> · prompt technologa <b>${esc(a.technology_prompt_name ?? "—")}</b> · model ${esc(a.model ?? "")}
             ${a.duration_ms != null ? ` · ${(a.duration_ms / 1000).toFixed(1)} s` : ""}${a.usage ? ` · tokeny ${a.usage.input_tokens} / ${a.usage.output_tokens}` : ""}</p>
           ${a.error ? `<div class="notice err">${esc(a.error.kind)}: ${esc(a.error.message)}</div>` : ""}
           <h3 style="margin:12px 0 6px">Prompt technologa (z desktopu)</h3>
@@ -79,58 +79,29 @@ async function renderJob(id) {
 }
 
 // ---------------------------------------------------------------------------------------------
-// Profile (system prompt)
+// System prompt (one, built into the service)
 // ---------------------------------------------------------------------------------------------
-async function renderPrompts(selectedId) {
-  const prompts = await api("/api/admin/system-prompts");
-  const sel = prompts.find((p) => p.id === selectedId) ?? prompts[0];
+async function renderSystemPrompt() {
+  const p = await api("/api/admin/system-prompt");
   view().innerHTML = `
-    <div class="notice">System prompt jest wbudowany w serwis. Technolog wybiera profil przy klikaniu „Generuj” w aplikacji desktop
-      (<span class="mono">system_prompt_id</span>); bez wyboru używany jest profil domyślny. Zasady firmy (prompt technologa) przychodzą z desktopu.</div>
-    <div class="desk">
-      <aside class="card elements">
-        <h3>Profile</h3>
-        ${prompts.map((p) => `<div class="element ${p.id === sel?.id ? "active" : ""}" data-id="${esc(p.id)}"><b>${esc(p.name)}</b>
-          <span class="small muted mono">${esc(p.id)}</span> ${p.isDefault ? '<span class="badge ok">domyślny</span>' : ""}</div>`).join("")}
-        <div class="element" data-id=""><b>+ Nowy profil</b></div>
-      </aside>
-      <section class="card">
-        <div style="display:flex;flex-direction:column;gap:10px">
-          <div class="row">
-            <label class="field" style="flex:0 0 180px">ID<input id="p-id" value="${esc(sel?.id ?? "")}" ${sel ? "readonly" : ""} placeholder="np. blachy"></label>
-            <label class="field" style="flex:1">Nazwa<input id="p-name" value="${esc(sel?.name ?? "")}"></label>
-            <label class="row small" style="padding-top:18px"><input type="checkbox" id="p-default" ${sel?.isDefault ? "checked" : ""}> domyślny</label>
-          </div>
-          <label class="field">Treść<textarea id="p-text" class="code" rows="20">${esc(sel?.text ?? "")}</textarea></label>
-          <div class="row">
-            <button class="btn primary" id="p-save">Zapisz</button>
-            ${sel && !sel.isDefault ? '<button class="btn" id="p-delete">Usuń</button>' : ""}
-            ${sel ? `<span class="small muted">Zmieniono ${esc(fmtDate(sel.updatedAt))}</span>` : ""}
-          </div>
-        </div>
-      </section>
-    </div>`;
-
-  document.querySelectorAll(".element[data-id]").forEach((el) => el.addEventListener("click", () => {
-    if (el.dataset.id) renderPrompts(el.dataset.id);
-    else { renderPrompts("__new__"); }
-  }));
-  if (selectedId === "__new__") {
-    $("#p-id").value = ""; $("#p-id").readOnly = false; $("#p-name").value = ""; $("#p-text").value = ""; $("#p-default").checked = false;
-    $("#p-delete")?.remove();
-  }
+    <div class="notice">Jeden system prompt serwisu, używany w każdym zapytaniu. Zasady firmy (prompty technologa) są w aplikacji desktop –
+      technolog wybiera jeden z nich przy klikaniu „Generuj” i jego treść przychodzi w polu <span class="mono">technology_prompt</span>.</div>
+    <section class="card">
+      <div class="card-head"><h2>System prompt</h2><span class="small muted">zmieniono ${esc(fmtDate(p.updatedAt))}</span></div>
+      <textarea id="p-text" class="code" rows="24">${esc(p.text)}</textarea>
+      <div class="row" style="margin-top:10px">
+        <button class="btn primary" id="p-save">Zapisz</button>
+        <button class="btn" id="p-reset">Przywróć domyślny</button>
+      </div>
+    </section>`;
   $("#p-save").addEventListener("click", async () => {
-    const id = $("#p-id").value.trim();
-    try {
-      await api(`/api/admin/system-prompts/${encodeURIComponent(id)}`, { method: "PUT", json: { id, name: $("#p-name").value, text: $("#p-text").value, isDefault: $("#p-default").checked } });
-      toast("Zapisano profil.");
-      renderPrompts(id);
-    } catch (e) { toast(e.message); }
+    await api("/api/admin/system-prompt", { method: "PUT", json: { text: $("#p-text").value } }).then(() => toast("Zapisano.")).catch((e) => toast(e.message));
+    renderSystemPrompt();
   });
-  $("#p-delete")?.addEventListener("click", async () => {
-    if (!confirm(`Usunąć profil ${sel.name}?`)) return;
-    await api(`/api/admin/system-prompts/${sel.id}`, { method: "DELETE" }).catch((e) => toast(e.message));
-    renderPrompts();
+  $("#p-reset").addEventListener("click", async () => {
+    if (!confirm("Przywrócić domyślną treść system promptu?")) return;
+    await api("/api/admin/system-prompt/reset", { method: "POST" });
+    renderSystemPrompt();
   });
 }
 
@@ -218,8 +189,7 @@ function renderApi() {
       <h2 style="margin-bottom:12px">API dla aplikacji desktop</h2>
       <table>
         <tbody>
-          <tr><td class="mono">GET /api/v1/system-prompts</td><td>Lista profili do wyboru przy generowaniu: <span class="mono">[{ id, name, is_default }]</span></td></tr>
-          <tr><td class="mono">POST /api/v1/technology-jobs</td><td><span class="mono">multipart/form-data</span>: <b>drawing</b> (PNG/JPG/PDF/DXF), <b>element_id</b>, <b>technology_prompt</b>, <b>system_prompt_id</b> (opcjonalnie)<br>
+          <tr><td class="mono">POST /api/v1/technology-jobs</td><td><span class="mono">multipart/form-data</span>: <b>drawing</b> (PNG/JPG/PDF/DXF), <b>element_id</b>, <b>technology_prompt</b> (treść wybranego promptu technologa), <b>technology_prompt_name</b> (opcjonalnie, do logu)<br>
             → <span class="mono">202 { job_id, status }</span>. Serwis sam czyta dane elementu, maszyny, grupy i materiały z tabel PRODVISOR.</td></tr>
           <tr><td class="mono">GET /api/v1/technology-jobs/{job_id}</td><td>Odpytywanie co 1–2 s. <span class="mono">status</span>: pending → running → done | failed.<br>
             Po <b>done</b>: <span class="mono">result.operations[]</span> (no, name, machine { machine_code, maszyny_id, stanowisko_id }, alternatives[], tpz_min, tj_min, description, comment),
@@ -227,7 +197,7 @@ function renderApi() {
         </tbody>
       </table>
       <h3 style="margin:16px 0 8px">Przykład (curl)</h3>
-      <pre class="json">curl -F drawing=@rysunek.dxf -F element_id=100232 -F "technology_prompt=Toczenie na 0502..." -F system_prompt_id=cnc \\
+      <pre class="json">curl -F drawing=@rysunek.dxf -F element_id=100232 -F "technology_prompt=Zasady firmowe: ..." -F "technology_prompt_name=Obróbka CNC" \\
      ${esc(location.origin)}/api/v1/technology-jobs
 
 curl ${esc(location.origin)}/api/v1/technology-jobs/&lt;job_id&gt;</pre>
@@ -241,7 +211,7 @@ async function route() {
   const [page, id] = location.hash.replace(/^#\/?/, "").split("/");
   document.querySelectorAll(".topbar nav a").forEach((a) => a.classList.toggle("active", a.getAttribute("href") === `#/${page || "zapytania"}`));
   try {
-    if (page === "profile") await renderPrompts();
+    if (page === "system-prompt") await renderSystemPrompt();
     else if (page === "maszyny") await renderMachines();
     else if (page === "ustawienia") await renderSettings();
     else if (page === "api") renderApi();

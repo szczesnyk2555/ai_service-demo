@@ -29,6 +29,7 @@ public static class SchemaUpgrade
         ("Jobs", "TechnologyPrompt", "TEXT NULL"),
         ("Jobs", "SystemPromptId", "TEXT NULL"),
         ("Jobs", "PartName", "TEXT NULL"),
+        ("Jobs", "TechnologyPromptName", "TEXT NULL"),
     ];
 
     public static void Apply(AppDbContext db)
@@ -55,6 +56,11 @@ public static class SchemaUpgrade
             CREATE TABLE IF NOT EXISTS "SavedTechnologies" (
                 "ElementId" TEXT NOT NULL CONSTRAINT "PK_SavedTechnologies" PRIMARY KEY,
                 "JobId" TEXT NOT NULL, "SavedAt" TEXT NOT NULL, "Json" TEXT NOT NULL)
+            """);
+        db.Database.ExecuteSqlRaw("""
+            CREATE TABLE IF NOT EXISTS "TechnologyPrompts" (
+                "Id" TEXT NOT NULL CONSTRAINT "PK_TechnologyPrompts" PRIMARY KEY,
+                "Name" TEXT NOT NULL, "Text" TEXT NOT NULL)
             """);
 
         foreach (var (table, column, type) in AddedColumns)

@@ -13,7 +13,7 @@ public sealed record DrawingInput(byte[] Bytes, string ContentType, string FileN
 
 /// <summary>
 /// Builds the body for POST /v1/responses:
-///   developer message = system prompt (profile chosen by the client)
+///   developer message = system prompt (built into the service)
 ///   user message      = input_text (technology prompt + element + machines + groups + materials) + drawing
 ///   text.format       = JSON Schema, strict: machine ids are an enum of the active machines
 /// </summary>

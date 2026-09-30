@@ -83,62 +83,57 @@ public static class SeedData
     static Machine M(string id, string type, string name, double rate, string description, bool active = true) =>
         new() { Id = id, Type = type, Name = name, HourlyRate = rate, Description = description, Active = active };
 
-    // ---- System prompt profiles (built into the service, selectable per request) -------------
-    public static IReadOnlyList<SystemPrompt> DefaultSystemPrompts { get; } =
+    // ---- System prompt (one, built into the service, editable in the admin panel) ------------
+    public const string SystemPromptId = "system";
+
+    public const string DefaultSystemPrompt = """
+        Jesteś doświadczonym technologiem produkcji w zakładzie wykonującym obróbkę skrawaniem, konstrukcje spawane i elementy z blach.
+        Twoim zadaniem jest przygotowanie PROJEKTU technologii produkcji (marszruty) dla elementu z załączonego rysunku technicznego.
+
+        Zasady:
+        1. Używaj WYŁĄCZNIE maszyn z podanej listy i odwołuj się do nich przez machine_id. Nigdy nie wymyślaj maszyn.
+        2. Układaj operacje w logicznej kolejności technologicznej (przygotowanie materiału -> obróbka główna -> obróbka wykańczająca
+           -> gratowanie / powłoki -> kontrola jakości). Minimalizuj liczbę zamocowań, jeśli ma to sens technologiczny.
+        3. Dla każdej operacji oszacuj czas przygotowawczo-zakończeniowy (TPZ, na partię) i czas jednostkowy (TJ, na sztukę) w minutach,
+           na podstawie geometrii, tolerancji, chropowatości, materiału i wielkości partii.
+        4. description: krótko, co jest wykonywane i kluczowe wymiary/tolerancje widoczne na rysunku.
+           comment: uwagi do operacji dla technologa (niepewności, założenia, narzędzia / przyrządy, powód pominięcia maszyn z grupy).
+        5. Nigdy nie wymyślaj wymiarów, tolerancji ani wymagań niewidocznych na rysunku. Jeśli czegoś brakuje, napisz o tym.
+        6. Instrukcje technologa (zasady firmowe) mają pierwszeństwo przed ogólnymi zasadami powyżej.
+        7. Numeruj operacje kolejno od 1. general_notes: krótkie podsumowanie podejścia, założeń i pytań otwartych.
+        Wszystkie pola tekstowe pisz po polsku.
+        """;
+
+    // ---- Technology prompts of the desktop application (company rules, chosen by the technologist) ----
+    public static IReadOnlyList<TechnologyPrompt> DefaultTechnologyPrompts { get; } =
     [
         new()
         {
-            Id = "cnc", Name = "Obróbka skrawaniem CNC", IsDefault = true,
+            Id = "cnc", Name = "Obróbka skrawaniem CNC",
             Text = """
-                Jesteś doświadczonym technologiem w zakładzie obróbki skrawaniem CNC.
-                Twoim zadaniem jest przygotowanie PROJEKTU technologii produkcji (marszruty) dla elementu z załączonego rysunku technicznego.
-
-                Zasady:
-                1. Używaj WYŁĄCZNIE maszyn z podanej listy i odwołuj się do nich przez machine_id. Nigdy nie wymyślaj maszyn.
-                2. Układaj operacje w logicznej kolejności: cięcie materiału -> toczenie / frezowanie -> wiercenie / gwintowanie -> szlifowanie
-                   -> gratowanie -> obróbka powierzchni -> kontrola jakości. Minimalizuj liczbę zamocowań, jeśli ma to sens technologiczny.
-                3. Dla każdej operacji oszacuj czas przygotowawczo-zakończeniowy (TPZ, na partię) i czas jednostkowy (TJ, na sztukę) w minutach,
-                   na podstawie geometrii, tolerancji, chropowatości, materiału i wielkości partii.
-                4. description: krótko, co jest obrabiane i kluczowe wymiary/tolerancje widoczne na rysunku.
-                   comment: uwagi do operacji dla technologa (niepewności, założenia, narzędzia specjalne, powód pominięcia maszyn z grupy).
-                5. Nigdy nie wymyślaj wymiarów, tolerancji ani wymagań niewidocznych na rysunku. Jeśli czegoś brakuje, napisz o tym.
-                6. Numeruj operacje kolejno od 1.
-                7. general_notes: krótkie podsumowanie podejścia, założeń i pytań otwartych.
-                Wszystkie pola tekstowe pisz po polsku.
+                Zasady firmowe:
+                - Pręty tnij na pile (0101 lub 0102); dodaj 2-4 mm naddatku na planowanie.
+                - Przy produkcji seryjnej preferuj maszyny CNC; maszyny konwencjonalne tylko dla pojedynczych sztuk lub bardzo prostych operacji.
+                - Ciasne pasowania (h6, k6 itp.) z Ra <= 0,8-1,6 na wałkach: wykańczaj na szlifierce do wałków 0302, zostaw naddatek na szlifowanie przy toczeniu.
+                - Gratowanie i stępianie krawędzi wykonuje stanowisko ŚLUSARZ. Nie ma myjki - nie dodawaj operacji mycia.
+                - Zawsze kończ technologię kontrolą końcową na stanowisku KONTROLA JAKOŚCI (1301).
+                - Jeśli nie podano wielkości partii, przyjmij 50 szt.
+                - Czasy jednostkowe muszą uwzględniać załadunek i rozładunek detalu.
                 """,
         },
         new()
         {
             Id = "spawane", Name = "Konstrukcje spawane i blachy",
             Text = """
-                Jesteś doświadczonym technologiem w zakładzie wykonującym konstrukcje spawane, elementy z blach i profili.
-                Twoim zadaniem jest przygotowanie PROJEKTU technologii produkcji (marszruty) dla elementu z załączonego rysunku technicznego.
-
-                Zasady:
-                1. Używaj WYŁĄCZNIE maszyn z podanej listy i odwołuj się do nich przez machine_id. Nigdy nie wymyślaj maszyn.
-                2. Typowa kolejność: cięcie (piła / laser / kooperacja) -> gięcie / zwijanie -> obróbka otworów -> spawanie
-                   -> prostowanie i obróbka po spawaniu -> gratowanie -> malowanie / powłoki -> kontrola jakości.
-                3. Dla każdej operacji oszacuj TPZ (na partię) i TJ (na sztukę) w minutach.
-                4. description: co jest wykonywane i kluczowe wymiary z rysunku. comment: uwagi do operacji (np. przygotowanie spoin,
-                   przyrządy spawalnicze, niepewności, powód pominięcia maszyn z grupy).
-                5. Nigdy nie wymyślaj wymiarów ani wymagań niewidocznych na rysunku. Jeśli czegoś brakuje, napisz o tym.
-                6. Numeruj operacje kolejno od 1. general_notes: podsumowanie założeń i pytania otwarte.
-                Wszystkie pola tekstowe pisz po polsku.
+                Zasady firmowe:
+                - Blachy do 20 mm tnij laserem (grupa Cięcie laserem), grubsze i profile - piła lub kooperacja.
+                - Typowa kolejność: cięcie -> gięcie -> otwory -> spawanie -> prostowanie -> gratowanie -> malowanie (kooperacja) -> kontrola.
+                - Spawanie na stanowiskach spawalniczo-ślusarskich; przy seriach powyżej 20 szt. rozważ robota spawalniczego.
+                - W comment podaj potrzebne przyrządy spawalnicze i przygotowanie krawędzi pod spoiny.
+                - Zawsze kończ technologię kontrolą końcową na stanowisku KONTROLA JAKOŚCI (1301).
                 """,
         },
     ];
-
-    // ---- Default technology prompt of the desktop application (company rules) ---------------
-    public const string DefaultTechnologyPrompt = """
-        Zasady firmowe:
-        - Pręty tnij na pile (0101 lub 0102); dodaj 2-4 mm naddatku na planowanie.
-        - Przy produkcji seryjnej preferuj maszyny CNC; maszyny konwencjonalne tylko dla pojedynczych sztuk lub bardzo prostych operacji.
-        - Ciasne pasowania (h6, k6 itp.) z Ra <= 0,8-1,6 na wałkach: wykańczaj na szlifierce do wałków 0302, zostaw naddatek na szlifowanie przy toczeniu.
-        - Gratowanie i stępianie krawędzi wykonuje stanowisko ŚLUSARZ. Nie ma myjki - nie dodawaj operacji mycia.
-        - Zawsze kończ technologię kontrolą końcową na stanowisku KONTROLA JAKOŚCI (1301).
-        - Jeśli nie podano wielkości partii, przyjmij 50 szt.
-        - Czasy jednostkowe muszą uwzględniać załadunek i rozładunek detalu.
-        """;
 
     // ---- Simulated PRODVISOR elements with drawings uploaded by the designer ------------------
     public static IReadOnlyList<ProdvisorElement> DefaultElements { get; } =
@@ -149,17 +144,20 @@ public static class SeedData
 
     public static void Seed(AppDbContext db)
     {
-        if (!db.SystemPrompts.Any())
-            db.SystemPrompts.AddRange(DefaultSystemPrompts.Select(p => new SystemPrompt
-                { Id = p.Id, Name = p.Name, Text = p.Text, IsDefault = p.IsDefault }));
+        // One system prompt. Databases of the previous version had several profiles - replaced by the single prompt.
+        if (db.SystemPrompts.Find(SystemPromptId) is null)
+        {
+            db.SystemPrompts.RemoveRange(db.SystemPrompts);
+            db.SystemPrompts.Add(new SystemPrompt { Id = SystemPromptId, Name = "System prompt", Text = DefaultSystemPrompt, IsDefault = true });
+        }
+
+        if (!db.TechnologyPrompts.Any())
+            db.TechnologyPrompts.AddRange(DefaultTechnologyPrompts.Select(p => new TechnologyPrompt { Id = p.Id, Name = p.Name, Text = p.Text }));
 
         foreach (var e in DefaultElements)
             if (db.Elements.Find(e.Id) is null)
                 db.Elements.Add(new ProdvisorElement
                     { Id = e.Id, Number = e.Number, Name = e.Name, Material = e.Material, Quantity = e.Quantity, DrawingFile = e.DrawingFile });
-
-        if (db.Settings.Find("desktop.technology_prompt") is null)
-            db.Settings.Add(new AppSetting { Key = "desktop.technology_prompt", Value = DefaultTechnologyPrompt });
 
         db.SaveChanges();
     }

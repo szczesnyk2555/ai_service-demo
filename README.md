@@ -3,7 +3,7 @@
 Serwis, który na podstawie **rysunku** i **danych z tabel PRODVISOR** przygotowuje projekt technologii (operacje, maszyny, TPZ/TJ, materiał, wymiary, uwagi) przy pomocy OpenAI. Wynik wraca do aplikacji desktop z identyfikatorami PRODVISOR, technolog go poprawia i zatwierdza.
 
 ```
-Desktop PRODVISOR ──(rysunek + element_id + prompt technologa [+ profil])──► Serwis AI ──► OpenAI (Responses API)
+Desktop PRODVISOR ──(rysunek + element_id + wybrany prompt technologa)──► Serwis AI ──► OpenAI (Responses API)
         ▲                                                                       │  czyta: element, maszyny + parametry,
         └──────────── wynik z MASZYNY.ID / STANOWISKO.ID / MaterialsKind.ID ◄───┘  grupy stanowisk, materiały
 ```
@@ -12,8 +12,8 @@ W demo są dwie strony:
 
 | Adres | Co to jest |
 |---|---|
-| `http://localhost:5080/desktop/` | **Symulacja aplikacji desktop**: lista elementów z rysunkami, prompt technologa, wybór profilu, „Generuj technologię”, edycja karty, „Zatwierdź i zapisz”. Z serwisem rozmawia wyłącznie przez `/api/v1`. |
-| `http://localhost:5080/` | **Panel serwisu**: zapytania (z podglądem requestu do OpenAI), profile system promptu, maszyny, klucz API / model, opis API. |
+| `http://localhost:5080/desktop/` | **Symulacja aplikacji desktop**: lista elementów z rysunkami, kilka promptów technologa (zasady firmy) z wyborem przy generowaniu, „Generuj technologię”, edycja karty, „Zatwierdź i zapisz”. Z serwisem rozmawia wyłącznie przez `/api/v1`. |
+| `http://localhost:5080/` | **Panel serwisu**: zapytania (z podglądem requestu do OpenAI), jeden system prompt, maszyny, klucz API / model, opis API. |
 
 ## Uruchomienie
 
@@ -30,8 +30,7 @@ Instalacja na serwerze: Linux – [docs/DEPLOY-LINUX.md](docs/DEPLOY-LINUX.md); 
 
 | | Endpoint | Opis |
 |---|---|---|
-| `GET` | `/api/v1/system-prompts` | Profile do wyboru: `[{ id, name, is_default }]` |
-| `POST` | `/api/v1/technology-jobs` | `multipart/form-data`: `drawing` (PNG/JPG/PDF/DXF), `element_id`, `technology_prompt`, `system_prompt_id` (opcjonalnie) → `202 { job_id, status }` |
+| `POST` | `/api/v1/technology-jobs` | `multipart/form-data`: `drawing` (PNG/JPG/PDF/DXF), `element_id`, `technology_prompt` (treść wybranego promptu technologa), `technology_prompt_name` (opcjonalnie, do logu) → `202 { job_id, status }` |
 | `GET` | `/api/v1/technology-jobs/{job_id}` | Status `pending → running → done / failed`; po `done` – `result` + `warnings` |
 
 Generowanie trwa od kilkunastu sekund do kilku minut, dlatego jest asynchroniczne: desktop dostaje `job_id` od razu i odpytuje GET co 1–2 s.
@@ -61,8 +60,8 @@ Generowanie trwa od kilkunastu sekund do kilku minut, dlatego jest asynchroniczn
 
 Jedno wywołanie `POST /v1/responses` (`store: false`):
 
-- **developer** – system prompt wybranego profilu (wbudowany w serwis, edytowalny w panelu, np. „Obróbka skrawaniem CNC”, „Konstrukcje spawane i blachy”),
-- **user** – prompt technologa (zasady firmy z desktopu), dane elementu (numer, nazwa, materiał, ilość), dla DXF dokładne wymiary i teksty z pliku, aktywne maszyny z typem i parametrami, grupy stanowisk, lista materiałów (ID | nazwa) + **rysunek** (obraz lub PDF),
+- **developer** – system prompt (jeden, wbudowany w serwis, edytowalny w panelu),
+- **user** – prompt technologa wybrany w desktopie (zasady firmy, np. „Obróbka skrawaniem CNC”, „Konstrukcje spawane i blachy”), dane elementu (numer, nazwa, materiał, ilość), dla DXF dokładne wymiary i teksty z pliku, aktywne maszyny z typem i parametrami, grupy stanowisk, lista materiałów (ID | nazwa) + **rysunek** (obraz lub PDF),
 - **text.format** – JSON Schema w trybie `strict`; `machine_id` i `alternative_machine_ids` to `enum` aktywnych maszyn, więc model nie może zwrócić maszyny spoza listy.
 
 Decyzje należą do AI: kolejność operacji, maszyna główna, które maszyny z grupy stanowiska mogą ją zastąpić (pominięte – z powodem w `comment`), czasy, dobór pozycji z kartoteki materiałów. Serwis tylko sprawdza wynik (nieznane ID materiału jest odrzucane, walidator zgłasza ostrzeżenia) i mapuje kody na ID PRODVISOR.

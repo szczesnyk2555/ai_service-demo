@@ -1,10 +1,11 @@
 // PRODVISOR desktop application - simulation.
-// Data the desktop owns (elements, drawings, technology prompt, dictionaries, saved technologies) comes from /sim/api.
-// The AI service is used ONLY through its public API: /api/v1/system-prompts and /api/v1/technology-jobs.
+// Data the desktop owns (elements, drawings, technology prompts, dictionaries, saved technologies) comes from /sim/api.
+// The AI service is used ONLY through its public API: /api/v1/technology-jobs.
 "use strict";
 
 const state = {
-  elements: [], lookup: { machines: [], materials: [] }, systemPrompts: [], technologyPrompt: "",
+  elements: [], lookup: { machines: [], materials: [] },
+  technologyPrompts: [], promptId: null, promptOpen: false,   // technologist's prompts (company rules), one chosen per generation
   element: null,     // selected element
   card: null,        // technology card being edited (desktop form, machine codes)
   job: null,         // { id, status, error, warnings, model, mock, durationMs, usage }
@@ -37,10 +38,13 @@ const machineLabel = (code) => { const m = machineByCode(code); return m ? `${m.
 // Start
 // ---------------------------------------------------------------------------------------------
 async function init() {
-  const [elements, lookup, prompts, tp] = await Promise.all([
-    api("/sim/api/elements"), api("/sim/api/lookup"), api("/api/v1/system-prompts"), api("/sim/api/technology-prompt"),
+  const [elements, lookup, prompts] = await Promise.all([
+    api("/sim/api/elements"), api("/sim/api/lookup"), api("/sim/api/technology-prompts"),
   ]);
-  Object.assign(state, { elements, lookup, systemPrompts: prompts, technologyPrompt: tp.text });
+  let last = null;
+  try { last = localStorage.getItem("technologyPromptId"); } catch { /* storage unavailable */ }
+  const initial = prompts.find((p) => p.id === last) ?? prompts.find((p) => p.id === "cnc") ?? prompts[0];
+  Object.assign(state, { elements, lookup, technologyPrompts: prompts, promptId: initial?.id ?? null });
   renderElements();
   if (elements.length) selectElement(elements[0].id);
 }
@@ -70,25 +74,71 @@ async function selectElement(id) {
 }
 
 // ---------------------------------------------------------------------------------------------
-// Generation: drawing + element_id + technology_prompt (+ system_prompt_id) -> 202 { job_id } -> polling
+// Technology prompts (company rules): several in the desktop, the technologist picks one per generation
+// ---------------------------------------------------------------------------------------------
+const selectedPrompt = () => state.technologyPrompts.find((p) => p.id === state.promptId) ?? state.technologyPrompts[0];
+
+async function savePrompt() {
+  const p = selectedPrompt();
+  if (p?.dirty) {
+    await api(`/sim/api/technology-prompts/${p.id}`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name: p.name, text: p.text }) });
+    p.dirty = false;
+  }
+  return p;
+}
+
+function bindPrompts(prompt) {
+  $("#prompt-select").addEventListener("change", async (e) => {
+    await savePrompt().catch((err) => toast(err.message));
+    state.promptId = e.target.value;
+    try { localStorage.setItem("technologyPromptId", state.promptId); } catch { /* storage unavailable */ }
+    render();
+  });
+  $("#prompt-details").addEventListener("toggle", (e) => (state.promptOpen = e.target.open));
+  $("#prompt-name")?.addEventListener("input", (e) => { prompt.name = e.target.value; prompt.dirty = true; });
+  $("#prompt-text")?.addEventListener("input", (e) => { prompt.text = e.target.value; prompt.dirty = true; });
+  $("#prompt-save")?.addEventListener("click", async () => {
+    try { await savePrompt(); toast("Prompt zapisany."); render(); } catch (err) { toast(err.message); }
+  });
+  $("#prompt-new")?.addEventListener("click", async () => {
+    const name = prompt === undefined ? "Nowy prompt" : window.prompt("Nazwa nowego promptu technologa:", "Nowy prompt");
+    if (!name) return;
+    try {
+      await savePrompt();
+      const created = await api("/sim/api/technology-prompts", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name, text: "Zasady firmowe:\n- " }) });
+      state.technologyPrompts.push(created);
+      state.promptId = created.id;
+      state.promptOpen = true;
+      render();
+    } catch (err) { toast(err.message); }
+  });
+  $("#prompt-delete")?.addEventListener("click", async () => {
+    if (!confirm(`Usunąć prompt „${prompt.name}”?`)) return;
+    await api(`/sim/api/technology-prompts/${prompt.id}`, { method: "DELETE" }).catch((err) => toast(err.message));
+    state.technologyPrompts = state.technologyPrompts.filter((p) => p !== prompt);
+    state.promptId = state.technologyPrompts[0]?.id ?? null;
+    render();
+  });
+}
+
+// ---------------------------------------------------------------------------------------------
+// Generation: drawing + element_id + technology_prompt -> 202 { job_id } -> polling
 // ---------------------------------------------------------------------------------------------
 async function generate() {
   if (state.card && !confirm("Wygenerować nową technologię? Obecna karta zostanie zastąpiona.")) return;
   const el = state.element;
-  state.technologyPrompt = $("#tech-prompt").value;
-  const systemPromptId = $("#system-prompt").value;
   state.job = { status: "sending" };
   render();
 
   try {
-    await api("/sim/api/technology-prompt", { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ text: state.technologyPrompt }) });
+    const prompt = await savePrompt();   // unsaved edits of the chosen prompt are saved first
     const drawing = await (await fetch(`/sim/api/elements/${el.id}/drawing`)).blob();
 
     const form = new FormData();
     form.append("drawing", drawing, el.drawingFile);
     form.append("element_id", el.id);
-    form.append("technology_prompt", state.technologyPrompt);
-    form.append("system_prompt_id", systemPromptId);
+    form.append("technology_prompt", prompt.text);
+    form.append("technology_prompt_name", prompt.name);
     const { job_id } = await api("/api/v1/technology-jobs", { method: "POST", body: form });
 
     state.job = { id: job_id, status: "pending", startedAt: Date.now() };
@@ -176,6 +226,7 @@ function render() {
   const el = state.element;
   if (!el) return;
   const busy = ["sending", "pending", "running"].includes(state.job?.status);
+  const prompt = selectedPrompt();
 
   $("#workspace").innerHTML = `
     <section class="card">
@@ -192,24 +243,33 @@ function render() {
         <img class="drawing" id="drawing" src="/sim/api/elements/${esc(el.id)}/preview" alt="Rysunek">
       </div>
 
-      <details style="margin-top:14px">
-        <summary><b>Prompt technologa</b> <span class="small muted">– zasady firmy, zapisywany w aplikacji desktopowej</span></summary>
-        <textarea id="tech-prompt" rows="7" style="margin-top:8px">${esc(state.technologyPrompt)}</textarea>
-      </details>
-
       <div class="generate-bar">
-        <label class="field">Profil (system prompt serwisu)
-          <select id="system-prompt">${state.systemPrompts.map((p) => `<option value="${esc(p.id)}" ${p.is_default ? "selected" : ""}>${esc(p.name)}</option>`).join("")}</select>
+        <label class="field">Prompt technologa
+          <select id="prompt-select">${state.technologyPrompts.map((p) => `<option value="${esc(p.id)}" ${p.id === prompt?.id ? "selected" : ""}>${esc(p.name)}</option>`).join("")}</select>
         </label>
-        <button class="btn primary" id="generate" ${busy ? "disabled" : ""}>Generuj technologię (AI)</button>
+        <button class="btn primary" id="generate" ${busy || !prompt ? "disabled" : ""}>Generuj technologię (AI)</button>
         <span id="status"></span>
       </div>
+
+      <details style="margin-top:12px" ${state.promptOpen ? "open" : ""} id="prompt-details">
+        <summary><b>Edytuj prompty technologa</b> <span class="small muted">– zasady firmy, zapisywane w aplikacji desktopowej</span></summary>
+        <div style="display:flex;flex-direction:column;gap:8px;margin-top:8px">
+          ${prompt ? `
+          <label class="field">Nazwa<input id="prompt-name" value="${esc(prompt.name)}"></label>
+          <textarea id="prompt-text" rows="8">${esc(prompt.text)}</textarea>` : '<span class="muted">Brak promptów – dodaj nowy.</span>'}
+          <div class="row">
+            ${prompt ? '<button class="btn" id="prompt-save">Zapisz prompt</button>' : ""}
+            <button class="btn" id="prompt-new">+ Nowy prompt</button>
+            ${prompt ? '<button class="btn ghost" id="prompt-delete">Usuń</button>' : ""}
+          </div>
+        </div>
+      </details>
     </section>
     ${state.job?.status === "failed" ? `<div class="notice err"><b>Generowanie nie powiodło się.</b> ${esc(state.job.error?.message)}</div>` : ""}
     ${state.card ? renderCard() : ""}`;
 
   $("#generate").addEventListener("click", generate);
-  $("#tech-prompt").addEventListener("input", (e) => (state.technologyPrompt = e.target.value));
+  bindPrompts(prompt);
   $("#drawing").addEventListener("click", (e) => {
     const box = Object.assign(document.createElement("div"), { className: "lightbox", innerHTML: `<img src="${e.target.src}" alt="">` });
     box.addEventListener("click", () => box.remove());

@@ -12,9 +12,7 @@ namespace ProdvisorAi.Demo.Endpoints;
 /// </summary>
 public static class DesktopSimEndpoints
 {
-    const string TechnologyPromptKey = "desktop.technology_prompt";
-
-    public sealed record PromptBody(string Text);
+    public sealed record PromptBody(string Name, string Text);
 
     public static void MapDesktopSimEndpoints(this IEndpointRouteBuilder app)
     {
@@ -62,17 +60,36 @@ public static class DesktopSimEndpoints
             materials = await db.Materials.AsNoTracking().Where(m => m.Active).OrderBy(m => m.Name).Select(m => new { m.Id, m.Name }).ToListAsync(),
         });
 
-        // Technology prompt = the technologist's company rules, kept in the desktop application
-        sim.MapGet("/technology-prompt", async (AppDbContext db) =>
-            new { text = (await db.Settings.FindAsync(TechnologyPromptKey))?.Value ?? SeedData.DefaultTechnologyPrompt });
-        sim.MapPut("/technology-prompt", async (PromptBody body, AppDbContext db) =>
+        // Technology prompts = the technologist's company rules, kept in the desktop application; one is chosen per generation
+        sim.MapGet("/technology-prompts", async (AppDbContext db) =>
+            await db.TechnologyPrompts.AsNoTracking().OrderBy(p => p.Name).ToListAsync());
+        sim.MapPost("/technology-prompts", async (PromptBody body, AppDbContext db) =>
         {
-            var row = await db.Settings.FindAsync(TechnologyPromptKey);
-            if (row is null) db.Settings.Add(new AppSetting { Key = TechnologyPromptKey, Value = body.Text });
-            else row.Value = body.Text;
+            if (string.IsNullOrWhiteSpace(body.Name)) return Results.BadRequest(new { error = "Nazwa jest wymagana." });
+            var prompt = new TechnologyPrompt { Id = Guid.NewGuid().ToString("N")[..8], Name = body.Name.Trim(), Text = body.Text ?? "" };
+            db.TechnologyPrompts.Add(prompt);
+            await db.SaveChangesAsync();
+            return Results.Ok(prompt);
+        });
+        sim.MapPut("/technology-prompts/{id}", async (string id, PromptBody body, AppDbContext db) =>
+        {
+            var prompt = await db.TechnologyPrompts.FindAsync(id);
+            if (prompt is null) return Results.NotFound();
+            if (string.IsNullOrWhiteSpace(body.Name)) return Results.BadRequest(new { error = "Nazwa jest wymagana." });
+            prompt.Name = body.Name.Trim();
+            prompt.Text = body.Text ?? "";
+            await db.SaveChangesAsync();
+            return Results.Ok(prompt);
+        });
+        sim.MapDelete("/technology-prompts/{id}", async (string id, AppDbContext db) =>
+        {
+            var prompt = await db.TechnologyPrompts.FindAsync(id);
+            if (prompt is null) return Results.NotFound();
+            db.TechnologyPrompts.Remove(prompt);
             await db.SaveChangesAsync();
             return Results.NoContent();
         });
+
 
         // Approved technology saved to PRODVISOR (simulation: stored as JSON per element)
         sim.MapGet("/elements/{id}/technology", async (string id, AppDbContext db) =>

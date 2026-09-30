@@ -1,6 +1,5 @@
 using System.Text.Json;
 using System.Text.Json.Nodes;
-using System.Text.RegularExpressions;
 using Microsoft.EntityFrameworkCore;
 using ProdvisorAi.Demo.Data;
 using ProdvisorAi.Demo.Prodvisor;
@@ -8,15 +7,12 @@ using ProdvisorAi.Demo.Services;
 
 namespace ProdvisorAi.Demo.Endpoints;
 
-/// <summary>Service administration: OpenAI key + model, system prompt profiles, machines, request log.</summary>
-public static partial class AdminEndpoints
+/// <summary>Service administration: OpenAI key + model, system prompt, machines, request log.</summary>
+public static class AdminEndpoints
 {
     /// <summary>ApiKey is write-only: null/empty = keep the current key.</summary>
     public sealed record SettingsUpdate(string? ApiKey, bool ClearApiKey, string? Model, bool? MockMode);
-    public sealed record SystemPromptDto(string Id, string Name, string Text, bool IsDefault);
-
-    [GeneratedRegex("^[a-z0-9_-]{1,40}$")]
-    private static partial Regex PromptIdPattern();
+    public sealed record TextBody(string Text);
 
     public static void MapAdminEndpoints(this IEndpointRouteBuilder app)
     {
@@ -39,34 +35,25 @@ public static partial class AdminEndpoints
             catch (AiServiceException ex) { return Results.Ok(new { ok = false, message = ex.Message }); }
         });
 
-        // ---- System prompt profiles ----
-        admin.MapGet("/system-prompts", async (AppDbContext db) =>
-            await db.SystemPrompts.AsNoTracking().OrderByDescending(p => p.IsDefault).ThenBy(p => p.Name).ToListAsync());
-        admin.MapPut("/system-prompts/{id}", async (string id, SystemPromptDto dto, AppDbContext db) =>
+        // ---- System prompt (one, used for every request) ----
+        admin.MapGet("/system-prompt", async (AppDbContext db) =>
+            await db.SystemPrompts.AsNoTracking().FirstAsync(p => p.Id == SeedData.SystemPromptId));
+        admin.MapPut("/system-prompt", async (TextBody body, AppDbContext db) =>
         {
-            if (!PromptIdPattern().IsMatch(id)) return Results.BadRequest(new { error = "ID: małe litery, cyfry, - lub _ (maks. 40)." });
-            if (string.IsNullOrWhiteSpace(dto.Name) || string.IsNullOrWhiteSpace(dto.Text))
-                return Results.BadRequest(new { error = "Nazwa i treść są wymagane." });
-
-            var prompt = await db.SystemPrompts.FindAsync(id);
-            if (prompt is null) db.SystemPrompts.Add(prompt = new SystemPrompt { Id = id });
-            prompt.Name = dto.Name.Trim();
-            prompt.Text = dto.Text;
+            if (string.IsNullOrWhiteSpace(body.Text)) return Results.BadRequest(new { error = "Treść jest wymagana." });
+            var prompt = await db.SystemPrompts.FirstAsync(p => p.Id == SeedData.SystemPromptId);
+            prompt.Text = body.Text;
             prompt.UpdatedAt = DateTime.UtcNow;
-            if (dto.IsDefault)
-                foreach (var p in await db.SystemPrompts.ToListAsync()) p.IsDefault = p.Id == id;
-            prompt.IsDefault |= dto.IsDefault || !await db.SystemPrompts.AnyAsync(p => p.IsDefault && p.Id != id);
             await db.SaveChangesAsync();
             return Results.Ok(prompt);
         });
-        admin.MapDelete("/system-prompts/{id}", async (string id, AppDbContext db) =>
+        admin.MapPost("/system-prompt/reset", async (AppDbContext db) =>
         {
-            var prompt = await db.SystemPrompts.FindAsync(id);
-            if (prompt is null) return Results.NotFound();
-            if (prompt.IsDefault) return Results.BadRequest(new { error = "Nie można usunąć domyślnego profilu." });
-            db.SystemPrompts.Remove(prompt);
+            var prompt = await db.SystemPrompts.FirstAsync(p => p.Id == SeedData.SystemPromptId);
+            prompt.Text = SeedData.DefaultSystemPrompt;
+            prompt.UpdatedAt = DateTime.UtcNow;
             await db.SaveChangesAsync();
-            return Results.NoContent();
+            return Results.Ok(prompt);
         });
 
         // ---- Machines + materials (read from PRODVISOR; only "active" is local) ----
@@ -101,7 +88,7 @@ public static partial class AdminEndpoints
             (await db.Jobs.AsNoTracking().OrderByDescending(j => j.CreatedAt).Take(200).ToListAsync())
                 .Select(j => new
                 {
-                    j.Id, j.CreatedAt, j.Status, j.ElementId, j.PartNumber, j.SystemPromptId, j.Model, j.Mock,
+                    j.Id, j.CreatedAt, j.Status, j.ElementId, j.PartNumber, j.TechnologyPromptName, j.Model, j.Mock,
                     j.DurationMs, j.TotalTokens, j.ErrorKind,
                 }));
         admin.MapGet("/jobs/{id}", async (string id, AppDbContext db) =>
